@@ -8,6 +8,7 @@ import {
   Text,
   Platform,
   BackHandler,
+  Linking,
 } from 'react-native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -73,16 +74,28 @@ export default function PowerAppsScreen() {
               webViewRef.current.clearHistory?.();
             }
             
-            // Close the app after a short delay to allow cleanup
-            setTimeout(() => {
-              if (Platform.OS === 'android') {
+            if (Platform.OS === 'android') {
+              // Android: Close app after cleanup
+              setTimeout(() => {
                 BackHandler.exitApp();
-              } else if (Platform.OS === 'ios') {
-                BackHandler.exitApp();
-              } else if (Platform.OS === 'web') {
-                window.close();
-              }
-            }, 500);
+              }, 500);
+            } else if (Platform.OS === 'ios') {
+              // iOS: Cannot close app programmatically, so navigate to logout URL
+              // and then reload with fresh login
+              setIsLoggingOut(true);
+              setKey(prev => prev + 1);
+              
+              // Show info to user
+              setTimeout(() => {
+                Alert.alert(
+                  'Utlogging fullført',
+                  'Du er nå logget ut. Appen vil nå kreve ny innlogging.',
+                  [{ text: 'OK' }]
+                );
+              }, 2000);
+            } else if (Platform.OS === 'web') {
+              window.close();
+            }
           },
         },
       ]
