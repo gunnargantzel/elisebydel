@@ -143,15 +143,13 @@ export default function PowerAppsScreen() {
               javaScriptEnabled={true}
               domStorageEnabled={true}
               startInLoadingState={false}
-              cacheEnabled={true}
-              sharedCookiesEnabled={true}
-              allowsInlineMediaPlayback={true}
-              keyboardDisplayRequiresUserAction={false}
-              automaticallyAdjustContentInsets={false}
-              contentInsetAdjustmentBehavior="never"
-              scrollEnabled={true}
-              bounces={false}
-              allowsBackForwardNavigationGestures={false}
+              incognito={true}
+              cacheEnabled={false}
+              thirdPartyCookiesEnabled={false}
+              sharedCookiesEnabled={false}
+              onNavigationStateChange={(navState) => {
+                console.log('Navigation:', navState.url);
+              }}
             />
           </>
         )}
