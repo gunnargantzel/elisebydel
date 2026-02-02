@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,7 +8,7 @@ import {
   Text,
   Platform,
   Linking,
-  Image,
+
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,7 +33,7 @@ export default function PowerAppsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState(0);
-  const [userName, setUserName] = useState<string | null>(null);
+
 
   const handleLogout = useCallback(() => {
     Alert.alert(
@@ -115,19 +115,13 @@ export default function PowerAppsScreen() {
     })();
   `;
 
-  // Redirect on web
-  useEffect(() => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.location.replace(getAuthUrl());
-    }
-  }, []);
+
 
   const handleMessage = useCallback((event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'userInfo' && data.userName) {
         console.log('Received user info:', data.userName);
-        setUserName(data.userName);
       }
     } catch (e) {
       console.log('Could not parse message:', e);
@@ -165,7 +159,18 @@ export default function PowerAppsScreen() {
       </View>
 
       <View style={styles.webViewContainer}>
-        {Platform.OS === 'web' ? null : error ? (
+        {Platform.OS === 'web' ? (
+          <View style={styles.webFallback}>
+            <Text style={styles.webFallbackTitle}>Power Apps</Text>
+            <Text style={styles.webFallbackText}>Åpne appen på mobil for beste opplevelse</Text>
+            <TouchableOpacity
+              style={styles.openBrowserButton}
+              onPress={() => Linking.openURL(getAuthUrl())}
+            >
+              <Text style={styles.openBrowserButtonText}>Åpne i nettleser</Text>
+            </TouchableOpacity>
+          </View>
+        ) : error ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
@@ -195,6 +200,11 @@ export default function PowerAppsScreen() {
               userAgent={Platform.OS === 'android' ? 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36' : undefined}
               onNavigationStateChange={(navState) => {
                 console.log('Navigation:', navState.url);
+                if (navState.loading) {
+                  setIsLoading(true);
+                } else {
+                  setIsLoading(false);
+                }
               }}
               onMessage={handleMessage}
             />
