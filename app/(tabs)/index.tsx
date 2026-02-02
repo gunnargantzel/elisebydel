@@ -42,6 +42,7 @@ export default function PowerAppsScreen() {
   const [useIncognito, setUseIncognito] = useState(false);
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [userName, setUserName] = useState<string | null>(null);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
@@ -101,6 +102,47 @@ export default function PowerAppsScreen() {
 
   const injectedJavaScript = `
     (function() {
+      // Try to extract user info from the page
+      function extractUserInfo() {
+        try {
+          // Try to find user name from various sources
+          var userName = null;
+          
+          // Check for user profile elements
+          var profileElements = document.querySelectorAll('[data-automation-id="personaName"], [class*="userName"], [class*="user-name"], [aria-label*="Profile"]');
+          if (profileElements.length > 0) {
+            userName = profileElements[0].textContent || profileElements[0].innerText;
+          }
+          
+          // Try to find from Office 365 header
+          if (!userName) {
+            var o365Profile = document.querySelector('#O365_MainLink_Me, #meInitialsButton, .ms-Persona-primaryText');
+            if (o365Profile) {
+              userName = o365Profile.textContent || o365Profile.getAttribute('aria-label');
+            }
+          }
+          
+          // Try PowerApps specific selectors
+          if (!userName) {
+            var paProfile = document.querySelector('[data-test-id="profile-header"], .profile-name, [class*="profile"][class*="name"]');
+            if (paProfile) {
+              userName = paProfile.textContent;
+            }
+          }
+          
+          if (userName && userName.trim()) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'userName', value: userName.trim() }));
+          }
+        } catch(e) {
+          console.log('Extract user error:', e);
+        }
+      }
+      
+      // Run after page loads
+      setTimeout(extractUserInfo, 2000);
+      setTimeout(extractUserInfo, 5000);
+      setTimeout(extractUserInfo, 10000);
+      
       true;
     })();
   `;
@@ -136,6 +178,7 @@ export default function PowerAppsScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.logo}>😊</Text>
+          {userName && <Text style={styles.userText} numberOfLines={1}>{userName}</Text>}
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity
@@ -190,6 +233,17 @@ export default function PowerAppsScreen() {
               setSupportMultipleWindows={false}
               allowsBackForwardNavigationGestures={true}
               onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+              onMessage={(event) => {
+                try {
+                  const data = JSON.parse(event.nativeEvent.data);
+                  if (data.type === 'userName' && data.value) {
+                    console.log('Received userName:', data.value);
+                    setUserName(data.value);
+                  }
+                } catch (e) {
+                  console.log('Message parse error:', e);
+                }
+              }}
               originWhitelist={['*']}
               onNavigationStateChange={(navState) => {
                 console.log('Navigation:', navState.url);
@@ -210,6 +264,7 @@ export default function PowerAppsScreen() {
                     console.log('Logout complete, starting fresh session...');
                     setTimeout(() => {
                       setIsLoggingOut(false);
+                      setUserName(null);
                       setKey(prev => prev + 1);
                     }, 500);
                   }
