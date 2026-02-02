@@ -40,6 +40,8 @@ export default function PowerAppsScreen() {
 
   const [useIncognito, setUseIncognito] = useState(false);
 
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   const handleLogout = useCallback(() => {
     Alert.alert(
       'Logg ut',
@@ -50,25 +52,19 @@ export default function PowerAppsScreen() {
           text: 'Logg ut',
           style: 'destructive',
           onPress: () => {
-            console.log('Logging out and clearing session...');
-            
+            console.log('Logging out - navigating to Microsoft logout...');
+            setIsLoggingOut(true);
             setError(null);
             
-            // Clear WebView cache and reload
+            // Clear WebView cache
             if (webViewRef.current) {
               webViewRef.current.clearCache?.(true);
               webViewRef.current.clearHistory?.();
             }
             
-            // Toggle incognito to force new session
+            // Force reload with incognito + key change
             setUseIncognito(true);
             setKey(prev => prev + 1);
-            
-            // Reset incognito after a short delay
-            setTimeout(() => {
-              setUseIncognito(false);
-              setKey(prev => prev + 1);
-            }, 500);
           },
         },
       ]
@@ -161,7 +157,7 @@ export default function PowerAppsScreen() {
             <WebView
               key={key}
               ref={webViewRef}
-              source={{ uri: getAuthUrl() }}
+              source={{ uri: isLoggingOut ? 'https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri=' + encodeURIComponent(getAuthUrl()) : getAuthUrl() }}
               style={styles.webView}
               onLoadEnd={handleLoadEnd}
               onError={handleError}
@@ -184,6 +180,14 @@ export default function PowerAppsScreen() {
               originWhitelist={['*']}
               onNavigationStateChange={(navState) => {
                 console.log('Navigation:', navState.url);
+                
+                // After logout redirect, reset state and reload fresh
+                if (isLoggingOut && navState.url.includes('powerapps.com')) {
+                  console.log('Logout complete, reloading with fresh session...');
+                  setIsLoggingOut(false);
+                  setUseIncognito(false);
+                  setKey(prev => prev + 1);
+                }
               }}
             />
           </>
