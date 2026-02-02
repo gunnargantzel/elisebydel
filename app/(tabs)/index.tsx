@@ -27,11 +27,6 @@ const getAuthUrl = () => {
   return url.toString();
 };
 
-// Redirect immediately on web before component renders
-if (typeof window !== 'undefined' && Platform.OS === 'web') {
-  window.location.replace(getAuthUrl());
-}
-
 export default function PowerAppsScreen() {
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
@@ -119,6 +114,13 @@ export default function PowerAppsScreen() {
       true;
     })();
   `;
+
+  // Redirect on web
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.replace(getAuthUrl());
+    }
+  }, []);
 
   const handleMessage = useCallback((event: any) => {
     try {
