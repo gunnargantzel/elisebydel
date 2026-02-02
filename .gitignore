@@ -3,9 +3,6 @@
 # dependencies
 node_modules/
 
-# Azure Static Web App build output
-build/
-
 # Expo
 .expo/
 dist/

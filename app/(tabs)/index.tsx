@@ -27,10 +27,6 @@ const getAuthUrl = () => {
   return url.toString();
 };
 
-// Desktop User-Agent slik at Power Apps bruker webløsning, ikke mobil player
-const DESKTOP_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
 // Redirect immediately on web before component renders
 if (typeof window !== 'undefined' && Platform.OS === 'web') {
   window.location.replace(getAuthUrl());
@@ -90,57 +86,7 @@ export default function PowerAppsScreen() {
       meta.httpEquiv = 'Cache-Control';
       meta.content = 'no-cache, no-store, must-revalidate';
       document.head.appendChild(meta);
-
-      // Skjul Power Apps "Åpne i mobilappen"-banner
-      function hideMobileAppBanner() {
-        var selectors = [
-          '[class*="mobile-app-banner"]',
-          '[class*="app-banner"]',
-          '[class*="open-in-app"]',
-          '[class*="GetTheApp"]',
-          '[class*="get-the-app"]',
-          '[data-testid*="banner"]',
-          '[id*="mobileAppPrompt"]'
-        ];
-        selectors.forEach(function(s) {
-          try {
-            document.querySelectorAll(s).forEach(function(el) {
-              var txt = (el.textContent || el.innerText || '').toLowerCase();
-              var isBanner = txt.indexOf('åpne') >= 0 || txt.indexOf('open in') >= 0 || txt.indexOf('get the app') >= 0;
-              var isBannerSelector = s.indexOf('banner') >= 0 || s.indexOf('mobileAppPrompt') >= 0;
-              if (isBannerSelector || (el.offsetHeight < 150 && isBanner)) {
-                el.style.display = 'none';
-                el.remove();
-              }
-            });
-          } catch(e) {}
-        });
-        // Fjerne fixed/sticky elementer øverst som ser ut som mobilapp-banner
-        document.querySelectorAll('div[style*="position: fixed"], div[style*="position:fixed"]').forEach(function(el) {
-          var rect = el.getBoundingClientRect();
-          var txt = (el.textContent || '').toLowerCase();
-          if (rect.top < 100 && rect.height < 100 && (txt.indexOf('åpne') >= 0 || txt.indexOf('open in') >= 0 || txt.indexOf('get the app') >= 0)) {
-            el.style.display = 'none';
-            el.remove();
-          }
-        });
-      }
-      hideMobileAppBanner();
-      // Observer for dynamisk lastet innhold
-      var observer = new MutationObserver(hideMobileAppBanner);
-      observer.observe(document.body, { childList: true, subtree: true });
-      setTimeout(hideMobileAppBanner, 500);
-      setTimeout(hideMobileAppBanner, 1500);
-      setTimeout(hideMobileAppBanner, 4000);
       true;
-    })();
-  `;
-
-  const injectedJavaScriptBeforeContentLoaded = `
-    (function() {
-      var style = document.createElement('style');
-      style.textContent = '[class*="mobile-banner"], [class*="app-banner"], [class*="native-app"], [id*="mobileAppPrompt"], [class*="MessageBar"][class*="top"] { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }';
-      document.documentElement.appendChild(style);
     })();
   `;
 
@@ -190,12 +136,10 @@ export default function PowerAppsScreen() {
               ref={webViewRef}
               source={{ uri: getAuthUrl() }}
               style={styles.webView}
-              userAgent={DESKTOP_USER_AGENT}
               onLoadEnd={handleLoadEnd}
               onError={handleError}
               onHttpError={handleError}
               injectedJavaScript={injectedJavaScript}
-              injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}
               javaScriptEnabled={true}
               domStorageEnabled={true}
               startInLoadingState={false}
