@@ -7,7 +7,7 @@ import {
   StatusBar,
   Text,
   Platform,
-
+  BackHandler,
 } from 'react-native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -73,10 +73,16 @@ export default function PowerAppsScreen() {
               webViewRef.current.clearHistory?.();
             }
             
-            // Set logout state and force incognito mode
-            setIsLoggingOut(true);
-            setUseIncognito(true);
-            setKey(prev => prev + 1);
+            // Close the app after a short delay to allow cleanup
+            setTimeout(() => {
+              if (Platform.OS === 'android') {
+                BackHandler.exitApp();
+              } else if (Platform.OS === 'ios') {
+                BackHandler.exitApp();
+              } else if (Platform.OS === 'web') {
+                window.close();
+              }
+            }, 500);
           },
         },
       ]
