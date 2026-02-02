@@ -102,46 +102,84 @@ export default function PowerAppsScreen() {
 
   const injectedJavaScript = `
     (function() {
-      // Try to extract user info from the page
+      var foundUser = false;
+      
+      function sendUserName(name) {
+        if (name && name.trim() && !foundUser) {
+          var cleanName = name.trim().replace(/\\s+/g, ' ');
+          if (cleanName.length > 1 && cleanName.length < 100) {
+            foundUser = true;
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'userName', value: cleanName }));
+          }
+        }
+      }
+      
       function extractUserInfo() {
         try {
-          // Try to find user name from various sources
-          var userName = null;
+          // PowerApps player header selectors
+          var selectors = [
+            '[data-automation-id="personaName"]',
+            '.ms-Persona-primaryText',
+            '.ms-Persona-details .ms-Persona-primaryText',
+            '#mectrl_currentAccount_primary',
+            '#mectrl_headerPicture',
+            '[data-testid="profile-card-name"]',
+            '.o365cs-me-tile-name',
+            '.mectrl_currentAccount_primary',
+            '[aria-label*="Account manager"]',
+            '.pa-player-header [class*="name"]',
+            '[class*="userProfile"] [class*="name"]',
+            '[class*="UserProfile"] [class*="Name"]',
+            '#O365_MainLink_MePhoto',
+            '.ms-CommandBar [class*="persona"]',
+            '[data-automationid="splitbuttonprimary"]',
+          ];
           
-          // Check for user profile elements
-          var profileElements = document.querySelectorAll('[data-automation-id="personaName"], [class*="userName"], [class*="user-name"], [aria-label*="Profile"]');
-          if (profileElements.length > 0) {
-            userName = profileElements[0].textContent || profileElements[0].innerText;
-          }
-          
-          // Try to find from Office 365 header
-          if (!userName) {
-            var o365Profile = document.querySelector('#O365_MainLink_Me, #meInitialsButton, .ms-Persona-primaryText');
-            if (o365Profile) {
-              userName = o365Profile.textContent || o365Profile.getAttribute('aria-label');
+          for (var i = 0; i < selectors.length; i++) {
+            var el = document.querySelector(selectors[i]);
+            if (el) {
+              var name = el.textContent || el.getAttribute('aria-label') || el.getAttribute('title');
+              if (name) {
+                sendUserName(name);
+                return;
+              }
             }
           }
           
-          // Try PowerApps specific selectors
-          if (!userName) {
-            var paProfile = document.querySelector('[data-test-id="profile-header"], .profile-name, [class*="profile"][class*="name"]');
-            if (paProfile) {
-              userName = paProfile.textContent;
+          // Try to get from MSAL account info in localStorage/sessionStorage
+          try {
+            var keys = Object.keys(sessionStorage).concat(Object.keys(localStorage));
+            for (var k = 0; k < keys.length; k++) {
+              var key = keys[k];
+              if (key.includes('login.windows.net') || key.includes('msal') || key.includes('account')) {
+                var val = sessionStorage.getItem(key) || localStorage.getItem(key);
+                if (val) {
+                  var parsed = JSON.parse(val);
+                  if (parsed.name) { sendUserName(parsed.name); return; }
+                  if (parsed.username) { sendUserName(parsed.username); return; }
+                  if (parsed.preferred_username) { sendUserName(parsed.preferred_username); return; }
+                }
+              }
             }
-          }
+          } catch(e) {}
           
-          if (userName && userName.trim()) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'userName', value: userName.trim() }));
-          }
         } catch(e) {
           console.log('Extract user error:', e);
         }
       }
       
-      // Run after page loads
-      setTimeout(extractUserInfo, 2000);
-      setTimeout(extractUserInfo, 5000);
+      // MutationObserver to detect when user info appears
+      var observer = new MutationObserver(function(mutations) {
+        if (!foundUser) extractUserInfo();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      
+      // Run periodically
+      setTimeout(extractUserInfo, 1000);
+      setTimeout(extractUserInfo, 3000);
+      setTimeout(extractUserInfo, 6000);
       setTimeout(extractUserInfo, 10000);
+      setInterval(function() { if (!foundUser) extractUserInfo(); }, 5000);
       
       true;
     })();
