@@ -52,17 +52,29 @@ export default function PowerAppsScreen() {
           text: 'Logg ut',
           style: 'destructive',
           onPress: () => {
-            console.log('Logging out - navigating to Microsoft logout...');
-            setIsLoggingOut(true);
+            console.log('Starting full logout sequence...');
             setError(null);
             
-            // Clear WebView cache
+            // First inject script to clear all storage in current page
             if (webViewRef.current) {
+              webViewRef.current.injectJavaScript(`
+                (function() {
+                  try {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    document.cookie.split(";").forEach(function(c) {
+                      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+                    });
+                  } catch(e) { console.log('Clear error:', e); }
+                })();
+                true;
+              `);
               webViewRef.current.clearCache?.(true);
               webViewRef.current.clearHistory?.();
             }
             
-            // Force reload with incognito + key change
+            // Set logout state and force incognito mode
+            setIsLoggingOut(true);
             setUseIncognito(true);
             setKey(prev => prev + 1);
           },
@@ -157,7 +169,9 @@ export default function PowerAppsScreen() {
             <WebView
               key={key}
               ref={webViewRef}
-              source={{ uri: isLoggingOut ? 'https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri=' + encodeURIComponent(getAuthUrl()) : getAuthUrl() }}
+              source={{ uri: isLoggingOut 
+                ? 'https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri=' + encodeURIComponent('https://make.powerapps.com/logout') 
+                : getAuthUrl() }}
               style={styles.webView}
               onLoadEnd={handleLoadEnd}
               onError={handleError}
@@ -181,12 +195,25 @@ export default function PowerAppsScreen() {
               onNavigationStateChange={(navState) => {
                 console.log('Navigation:', navState.url);
                 
-                // After logout redirect, reset state and reload fresh
-                if (isLoggingOut && navState.url.includes('powerapps.com')) {
-                  console.log('Logout complete, reloading with fresh session...');
-                  setIsLoggingOut(false);
-                  setUseIncognito(false);
-                  setKey(prev => prev + 1);
+                // After logout completes, reload with fresh login prompt
+                if (isLoggingOut) {
+                  // Check if we've completed logout flow
+                  if (navState.url.includes('logout') || 
+                      navState.url.includes('loggedout') || 
+                      navState.url.includes('login.microsoftonline.com') ||
+                      navState.url.includes('login.live.com')) {
+                    console.log('Logout in progress...');
+                  }
+                  
+                  // If redirected back to PowerApps or login page after logout
+                  if (navState.url.includes('powerapps.com/play') || 
+                      (navState.loading === false && navState.url.includes('microsoftonline.com') && !navState.url.includes('logout'))) {
+                    console.log('Logout complete, starting fresh session...');
+                    setTimeout(() => {
+                      setIsLoggingOut(false);
+                      setKey(prev => prev + 1);
+                    }, 500);
+                  }
                 }
               }}
             />
