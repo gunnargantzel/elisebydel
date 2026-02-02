@@ -38,6 +38,7 @@ export default function PowerAppsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState(0);
+  const [userName, setUserName] = useState<string | null>(null);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
@@ -77,18 +78,59 @@ export default function PowerAppsScreen() {
 
   const injectedJavaScript = `
     (function() {
-      // Clear any stored credentials on load
-      if (window.sessionStorage) {
-        window.sessionStorage.clear();
-      }
       // Prevent caching
       var meta = document.createElement('meta');
       meta.httpEquiv = 'Cache-Control';
       meta.content = 'no-cache, no-store, must-revalidate';
       document.head.appendChild(meta);
+      
+      // Try to get user info periodically
+      function getUserInfo() {
+        try {
+          // Try to find user info from Power Apps
+          var userElement = document.querySelector('[data-control-name="UserDisplayName"]');
+          var userName = userElement ? userElement.textContent : null;
+          
+          // Also try to get from Office 365 header
+          if (!userName) {
+            var o365User = document.querySelector('.o365cs-me-displayName, .mectrl_currentAccount_secondary, .mectrl_currentAccount_primary, [data-bi-cn="Me"]');
+            userName = o365User ? o365User.textContent : null;
+          }
+          
+          // Try from Microsoft account name
+          if (!userName) {
+            var msAccount = document.querySelector('#mectrl_currentAccount_primary, .mectrl_truncate');
+            userName = msAccount ? msAccount.textContent : null;
+          }
+          
+          if (userName && userName.trim()) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'userInfo', userName: userName.trim() }));
+          }
+        } catch(e) {
+          console.log('Could not get user info:', e);
+        }
+      }
+      
+      // Check multiple times as page loads
+      setTimeout(getUserInfo, 2000);
+      setTimeout(getUserInfo, 5000);
+      setTimeout(getUserInfo, 10000);
+      
       true;
     })();
   `;
+
+  const handleMessage = useCallback((event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'userInfo' && data.userName) {
+        console.log('Received user info:', data.userName);
+        setUserName(data.userName);
+      }
+    } catch (e) {
+      console.log('Could not parse message:', e);
+    }
+  }, []);
 
 
 
@@ -101,7 +143,7 @@ export default function PowerAppsScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.logo}>😊</Text>
-          <Text style={styles.userText}>Innlogget: bruker</Text>
+          <Text style={styles.userText}>Innlogget: {userName || 'bruker'}</Text>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity
@@ -153,6 +195,7 @@ export default function PowerAppsScreen() {
               onNavigationStateChange={(navState) => {
                 console.log('Navigation:', navState.url);
               }}
+              onMessage={handleMessage}
             />
           </>
         )}
