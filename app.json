@@ -1,5 +1,10 @@
 {
   "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "0cd4db7f-7843-42ad-9c58-1c88cf56e73f"
+      }
+    },
     "name": "EliseInstitusjon",
     "slug": "secure-powerapps-login",
     "version": "1.0.0",
