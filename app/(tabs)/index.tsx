@@ -74,37 +74,9 @@ export default function PowerAppsScreen() {
               webViewRef.current.clearHistory?.();
             }
             
-            if (Platform.OS === 'android') {
-              // Android: Show message then close app
-              Alert.alert(
-                'Utlogging fullført',
-                'Du er nå logget ut.',
-                [{ 
-                  text: 'OK', 
-                  onPress: () => BackHandler.exitApp()
-                }]
-              );
-            } else if (Platform.OS === 'ios') {
-              // iOS: Cannot close app programmatically, so navigate to logout URL
-              // and then reload with fresh login
-              setIsLoggingOut(true);
-              setKey(prev => prev + 1);
-              
-              // Show info to user
-              setTimeout(() => {
-                Alert.alert(
-                  'Utlogging fullført',
-                  'Du er nå logget ut. Appen vil nå kreve ny innlogging.',
-                  [{ text: 'OK' }]
-                );
-              }, 1500);
-            } else if (Platform.OS === 'web') {
-              Alert.alert(
-                'Utlogging fullført',
-                'Du er nå logget ut.',
-                [{ text: 'OK', onPress: () => window.close() }]
-              );
-            }
+            // Just perform logout and reload with fresh login
+            setIsLoggingOut(true);
+            setKey(prev => prev + 1);
           },
         },
       ]
