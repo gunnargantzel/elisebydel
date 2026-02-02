@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,10 +7,9 @@ import {
   StatusBar,
   Text,
   Platform,
-  Linking,
-  Image,
+
 } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { WebView, WebViewNavigation } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LogOut, RefreshCw } from 'lucide-react-native';
 import Colors from '@/constants/colors';
@@ -35,9 +34,11 @@ if (typeof window !== 'undefined' && Platform.OS === 'web') {
 export default function PowerAppsScreen() {
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState(0);
+
+  const [useIncognito, setUseIncognito] = useState(false);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
@@ -50,9 +51,24 @@ export default function PowerAppsScreen() {
           style: 'destructive',
           onPress: () => {
             console.log('Logging out and clearing session...');
-            setIsLoading(true);
+            
             setError(null);
+            
+            // Clear WebView cache and reload
+            if (webViewRef.current) {
+              webViewRef.current.clearCache?.(true);
+              webViewRef.current.clearHistory?.();
+            }
+            
+            // Toggle incognito to force new session
+            setUseIncognito(true);
             setKey(prev => prev + 1);
+            
+            // Reset incognito after a short delay
+            setTimeout(() => {
+              setUseIncognito(false);
+              setKey(prev => prev + 1);
+            }, 500);
           },
         },
       ]
@@ -77,18 +93,29 @@ export default function PowerAppsScreen() {
 
   const injectedJavaScript = `
     (function() {
-      // Clear any stored credentials on load
-      if (window.sessionStorage) {
-        window.sessionStorage.clear();
-      }
-      // Prevent caching
-      var meta = document.createElement('meta');
-      meta.httpEquiv = 'Cache-Control';
-      meta.content = 'no-cache, no-store, must-revalidate';
-      document.head.appendChild(meta);
       true;
     })();
   `;
+
+  const handleShouldStartLoadWithRequest = useCallback((request: WebViewNavigation) => {
+    const url = request.url;
+    console.log('Navigation request:', url);
+    
+    // Allow Microsoft auth URLs
+    if (
+      url.includes('login.microsoftonline.com') ||
+      url.includes('login.live.com') ||
+      url.includes('powerapps.com') ||
+      url.includes('microsoft.com') ||
+      url.includes('msftauth') ||
+      url.includes('office.com') ||
+      url.includes('azure.com')
+    ) {
+      return true;
+    }
+    
+    return true;
+  }, []);
 
 
 
@@ -143,13 +170,18 @@ export default function PowerAppsScreen() {
               javaScriptEnabled={true}
               domStorageEnabled={true}
               startInLoadingState={false}
-              incognito={false}
+              incognito={useIncognito}
               cacheEnabled={true}
               thirdPartyCookiesEnabled={true}
               sharedCookiesEnabled={true}
-              mixedContentMode="compatibility"
+              mixedContentMode="always"
               allowsInlineMediaPlayback={true}
               mediaPlaybackRequiresUserAction={false}
+              userAgent={Platform.OS === 'android' ? 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36' : undefined}
+              setSupportMultipleWindows={false}
+              allowsBackForwardNavigationGestures={true}
+              onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+              originWhitelist={['*']}
               onNavigationStateChange={(navState) => {
                 console.log('Navigation:', navState.url);
               }}
