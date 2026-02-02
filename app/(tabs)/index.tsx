@@ -136,7 +136,6 @@ export default function PowerAppsScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.logo}>😊</Text>
-          <Text style={styles.userText}>Innlogget: bruker</Text>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity
