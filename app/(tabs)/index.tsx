@@ -8,7 +8,6 @@ import {
   Text,
   Platform,
   BackHandler,
-  Linking,
 } from 'react-native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,15 +38,22 @@ export default function PowerAppsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState(0);
 
-  const [useIncognito, setUseIncognito] = useState(false);
+  const [useIncognito] = useState(false);
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutComplete, setLogoutComplete] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
+
+  const handleCloseApp = useCallback(() => {
+    if (Platform.OS === 'android') {
+      BackHandler.exitApp();
+    }
+  }, []);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
       'Logg ut',
-      'Er du sikker på at du vil logge ut? Du vil bli bedt om å logge inn på nytt.',
+      'Er du sikker på at du vil logge ut?',
       [
         { text: 'Avbryt', style: 'cancel' },
         {
@@ -56,6 +62,7 @@ export default function PowerAppsScreen() {
           onPress: () => {
             console.log('Starting full logout sequence...');
             setError(null);
+            setLogoutComplete(false);
             
             // First inject script to clear all storage in current page
             if (webViewRef.current) {
@@ -77,6 +84,7 @@ export default function PowerAppsScreen() {
             
             // Just perform logout and reload with fresh login
             setIsLoggingOut(true);
+            setUserName(null);
             setKey(prev => prev + 1);
           },
         },
@@ -237,7 +245,19 @@ export default function PowerAppsScreen() {
       </View>
 
       <View style={styles.webViewContainer}>
-        {Platform.OS === 'web' ? null : error ? (
+        {Platform.OS === 'web' ? null : logoutComplete ? (
+          <View style={styles.logoutCompleteContainer}>
+            <Text style={styles.logoutCompleteTitle}>Du er logget ut</Text>
+            <Text style={styles.logoutCompleteText}>Utloggingen er fullført.</Text>
+            <TouchableOpacity 
+              style={styles.closeAppButton} 
+              onPress={handleCloseApp}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.closeAppButtonText}>Lukk app</Text>
+            </TouchableOpacity>
+          </View>
+        ) : error ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
@@ -250,7 +270,7 @@ export default function PowerAppsScreen() {
               key={key}
               ref={webViewRef}
               source={{ uri: isLoggingOut 
-                ? 'https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri=' + encodeURIComponent('https://make.powerapps.com/logout') 
+                ? 'https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri=' + encodeURIComponent('https://login.microsoftonline.com/common/oauth2/v2.0/logoutsession') 
                 : getAuthUrl() }}
               style={styles.webView}
               onLoadEnd={handleLoadEnd}
@@ -296,14 +316,14 @@ export default function PowerAppsScreen() {
                     console.log('Logout in progress...');
                   }
                   
-                  // If redirected back to PowerApps or login page after logout
-                  if (navState.url.includes('powerapps.com/play') || 
+                  // If logout session completed
+                  if (navState.url.includes('logoutsession') || 
+                      navState.url.includes('signout') ||
                       (navState.loading === false && navState.url.includes('microsoftonline.com') && !navState.url.includes('logout'))) {
-                    console.log('Logout complete, starting fresh session...');
+                    console.log('Logout complete');
                     setTimeout(() => {
                       setIsLoggingOut(false);
-                      setUserName(null);
-                      setKey(prev => prev + 1);
+                      setLogoutComplete(true);
                     }, 500);
                   }
                 }
@@ -418,6 +438,36 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   openBrowserButtonText: {
+    color: Colors.headerText,
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  logoutCompleteContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    backgroundColor: Colors.background,
+  },
+  logoutCompleteTitle: {
+    fontSize: 24,
+    fontWeight: '700' as const,
+    color: Colors.text,
+    marginBottom: 12,
+  },
+  logoutCompleteText: {
+    fontSize: 16,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  closeAppButton: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    borderRadius: 10,
+  },
+  closeAppButtonText: {
     color: Colors.headerText,
     fontSize: 16,
     fontWeight: '600' as const,
