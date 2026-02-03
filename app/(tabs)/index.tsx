@@ -63,28 +63,55 @@ export default function PowerAppsScreen() {
             console.log('Starting full logout sequence...');
             setError(null);
             setLogoutComplete(false);
+            setUserName(null);
             
-            // First inject script to clear all storage in current page
+            // Clear all storage and cookies aggressively
             if (webViewRef.current) {
               webViewRef.current.injectJavaScript(`
                 (function() {
                   try {
+                    // Clear all storage
                     localStorage.clear();
                     sessionStorage.clear();
-                    document.cookie.split(";").forEach(function(c) {
-                      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-                    });
+                    
+                    // Clear all cookies for all domains
+                    var cookies = document.cookie.split(";");
+                    for (var i = 0; i < cookies.length; i++) {
+                      var cookie = cookies[i];
+                      var eqPos = cookie.indexOf("=");
+                      var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+                      document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+                      document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.microsoft.com";
+                      document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.microsoftonline.com";
+                      document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.powerapps.com";
+                      document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.live.com";
+                    }
+                    
+                    // Clear IndexedDB
+                    if (window.indexedDB) {
+                      indexedDB.databases().then(function(dbs) {
+                        dbs.forEach(function(db) { indexedDB.deleteDatabase(db.name); });
+                      }).catch(function() {});
+                    }
+                    
+                    // Clear caches
+                    if (window.caches) {
+                      caches.keys().then(function(names) {
+                        names.forEach(function(name) { caches.delete(name); });
+                      }).catch(function() {});
+                    }
                   } catch(e) { console.log('Clear error:', e); }
                 })();
                 true;
               `);
+              
+              // Clear WebView cache
               webViewRef.current.clearCache?.(true);
               webViewRef.current.clearHistory?.();
             }
             
-            // Just perform logout and reload with fresh login
+            // Start logout process
             setIsLoggingOut(true);
-            setUserName(null);
             setKey(prev => prev + 1);
           },
         },
@@ -270,7 +297,7 @@ export default function PowerAppsScreen() {
               key={key}
               ref={webViewRef}
               source={{ uri: isLoggingOut 
-                ? 'https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri=' + encodeURIComponent('https://login.microsoftonline.com/common/oauth2/v2.0/logoutsession') 
+                ? 'https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri=' + encodeURIComponent('https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=00000000-0000-0000-0000-000000000000&response_type=code&prompt=select_account')
                 : getAuthUrl() }}
               style={styles.webView}
               onLoadEnd={handleLoadEnd}
@@ -280,7 +307,7 @@ export default function PowerAppsScreen() {
               javaScriptEnabled={true}
               domStorageEnabled={true}
               startInLoadingState={false}
-              incognito={useIncognito}
+              incognito={isLoggingOut ? true : useIncognito}
               cacheEnabled={true}
               thirdPartyCookiesEnabled={true}
               sharedCookiesEnabled={true}
@@ -316,15 +343,17 @@ export default function PowerAppsScreen() {
                     console.log('Logout in progress...');
                   }
                   
-                  // If logout session completed
+                  // If logout session completed or redirected to login page
                   if (navState.url.includes('logoutsession') || 
                       navState.url.includes('signout') ||
+                      navState.url.includes('select_account') ||
+                      navState.url.includes('/authorize') ||
                       (navState.loading === false && navState.url.includes('microsoftonline.com') && !navState.url.includes('logout'))) {
-                    console.log('Logout complete');
+                    console.log('Logout complete, clearing and showing completion');
                     setTimeout(() => {
                       setIsLoggingOut(false);
                       setLogoutComplete(true);
-                    }, 500);
+                    }, 1000);
                   }
                 }
               }}
