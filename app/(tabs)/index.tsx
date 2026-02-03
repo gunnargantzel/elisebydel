@@ -44,12 +44,6 @@ export default function PowerAppsScreen() {
   const [logoutComplete, setLogoutComplete] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
 
-  const handleCloseApp = useCallback(() => {
-    if (Platform.OS === 'android') {
-      BackHandler.exitApp();
-    }
-  }, []);
-
   const handleLogout = useCallback(() => {
     Alert.alert(
       'Logg ut',
@@ -275,14 +269,7 @@ export default function PowerAppsScreen() {
         {Platform.OS === 'web' ? null : logoutComplete ? (
           <View style={styles.logoutCompleteContainer}>
             <Text style={styles.logoutCompleteTitle}>Du er logget ut</Text>
-            <Text style={styles.logoutCompleteText}>Utloggingen er fullført.</Text>
-            <TouchableOpacity 
-              style={styles.closeAppButton} 
-              onPress={handleCloseApp}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.closeAppButtonText}>Lukk app</Text>
-            </TouchableOpacity>
+            <Text style={styles.logoutCompleteText}>Utloggingen er fullført. Du kan nå lukke appen.</Text>
           </View>
         ) : error ? (
           <View style={styles.errorContainer}>
@@ -349,10 +336,16 @@ export default function PowerAppsScreen() {
                       navState.url.includes('select_account') ||
                       navState.url.includes('/authorize') ||
                       (navState.loading === false && navState.url.includes('microsoftonline.com') && !navState.url.includes('logout'))) {
-                    console.log('Logout complete, clearing and showing completion');
+                    console.log('Logout complete, closing app');
                     setTimeout(() => {
                       setIsLoggingOut(false);
-                      setLogoutComplete(true);
+                      // Automatically close app on Android after logout
+                      if (Platform.OS === 'android') {
+                        BackHandler.exitApp();
+                      } else {
+                        // On iOS, show completion screen since we can't close the app
+                        setLogoutComplete(true);
+                      }
                     }, 1000);
                   }
                 }
@@ -490,15 +483,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 32,
   },
-  closeAppButton: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    borderRadius: 10,
-  },
-  closeAppButtonText: {
-    color: Colors.headerText,
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
+
 });
