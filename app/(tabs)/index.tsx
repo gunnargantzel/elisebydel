@@ -254,7 +254,7 @@ export default function PowerAppsScreen() {
         </View>
       </View>
 
-      <View style={styles.webViewContainer}>
+      <View style={[styles.webViewContainer, { paddingBottom: insets.bottom }]}>
         {Platform.OS === 'web' ? null : logoutComplete ? (
           <View style={styles.logoutCompleteContainer}>
             <Text style={styles.logoutCompleteTitle}>Du er logget ut</Text>
