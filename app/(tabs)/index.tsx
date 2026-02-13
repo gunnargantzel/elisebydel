@@ -253,7 +253,7 @@ export default function PowerAppsScreen() {
       
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Image source={require('@/assets/images/elise-icon.png')} style={styles.logo} resizeMode="contain" />
+          <Text style={styles.logo}>😊</Text>
           {userName && <Text style={styles.userText} numberOfLines={1}>{userName}</Text>}
         </View>
         <View style={styles.headerRight}>
@@ -385,8 +385,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   logo: {
-    width: 32,
-    height: 32,
+    fontSize: 28,
   },
   userText: {
     color: '#e3eaf3',
