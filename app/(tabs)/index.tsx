@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LogOut, RefreshCw } from 'lucide-react-native';
+import { LogOut } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 
 const POWER_APPS_BASE_URL = 'https://apps.powerapps.com/play/e/51da13ed-bad2-4891-acdf-06d3184e6af1/a/f9c26727-72ed-468b-89c2-4e06ee09c3d8?tenantId=fb7e0b12-d8fc-4f14-bd1a-ad9c8667a7e6&hint=052fe12c-09c4-4ebe-8a83-abe82ae742cc&sourcetime=1770037641252&skipMobileRedirect=1&hidenavbar=true';
@@ -113,11 +113,7 @@ export default function PowerAppsScreen() {
     );
   }, []);
 
-  const handleRefresh = useCallback(() => {
-    console.log('Refreshing WebView...');
-    setError(null);
-    webViewRef.current?.reload();
-  }, []);
+
 
   const handleLoadEnd = useCallback(() => {
     console.log('WebView loaded successfully');
@@ -249,13 +245,6 @@ export default function PowerAppsScreen() {
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity
-            style={styles.headerButton}
-            onPress={handleRefresh}
-            activeOpacity={0.7}
-          >
-            <RefreshCw size={20} color={Colors.headerText} />
-          </TouchableOpacity>
-          <TouchableOpacity
             style={styles.logoutButton}
             onPress={handleLogout}
             activeOpacity={0.7}
@@ -274,7 +263,7 @@ export default function PowerAppsScreen() {
         ) : error ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+            <TouchableOpacity style={styles.retryButton} onPress={() => { setError(null); webViewRef.current?.reload(); }}>
               <Text style={styles.retryButtonText}>Prøv igjen</Text>
             </TouchableOpacity>
           </View>
@@ -390,11 +379,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500' as const,
   },
-  headerButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
+
   logoutButton: {
     padding: 8,
     borderRadius: 8,

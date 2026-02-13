@@ -2,7 +2,7 @@
   "expo": {
     "name": "Secure PowerApps Login",
     "slug": "secure-powerapps-login",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "rork-app",
