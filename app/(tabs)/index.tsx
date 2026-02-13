@@ -10,10 +10,21 @@ import {
   BackHandler,
   Image,
 } from 'react-native';
-import { WebView, WebViewNavigation } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LogOut } from 'lucide-react-native';
 import Colors from '@/constants/colors';
+
+type WebViewRef = {
+  injectJavaScript: (script: string) => void;
+  clearCache?: (clear: boolean) => void;
+  clearHistory?: () => void;
+  reload: () => void;
+};
+
+let WebView: React.ComponentType<any> | null = null;
+if (Platform.OS !== 'web') {
+  WebView = require('react-native-webview').WebView;
+}
 
 const POWER_APPS_BASE_URL = 'https://apps.powerapps.com/play/e/51da13ed-bad2-4891-acdf-06d3184e6af1/a/f9c26727-72ed-468b-89c2-4e06ee09c3d8?tenantId=fb7e0b12-d8fc-4f14-bd1a-ad9c8667a7e6&hint=052fe12c-09c4-4ebe-8a83-abe82ae742cc&sourcetime=1770037641252&skipMobileRedirect=1&hidenavbar=true';
 
@@ -29,7 +40,7 @@ const getAuthUrl = () => {
 
 export default function PowerAppsScreen() {
   const insets = useSafeAreaInsets();
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<WebViewRef | null>(null);
   
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState(0);
@@ -212,7 +223,7 @@ export default function PowerAppsScreen() {
     })();
   `;
 
-  const handleShouldStartLoadWithRequest = useCallback((request: WebViewNavigation) => {
+  const handleShouldStartLoadWithRequest = useCallback((request: { url: string }) => {
     const url = request.url;
     console.log('Navigation request:', url);
     
@@ -269,7 +280,7 @@ export default function PowerAppsScreen() {
               <Text style={styles.retryButtonText}>Prøv igjen</Text>
             </TouchableOpacity>
           </View>
-        ) : (
+        ) : WebView ? (
           <>
             <WebView
               key={key}
@@ -296,7 +307,7 @@ export default function PowerAppsScreen() {
               setSupportMultipleWindows={false}
               allowsBackForwardNavigationGestures={true}
               onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
-              onMessage={(event) => {
+              onMessage={(event: { nativeEvent: { data: string } }) => {
                 try {
                   const data = JSON.parse(event.nativeEvent.data);
                   if (data.type === 'userName' && data.value) {
@@ -308,7 +319,7 @@ export default function PowerAppsScreen() {
                 }
               }}
               originWhitelist={['*']}
-              onNavigationStateChange={(navState) => {
+              onNavigationStateChange={(navState: { url: string; loading?: boolean }) => {
                 console.log('Navigation:', navState.url);
                 
                 // After logout completes, reload with fresh login prompt
@@ -343,7 +354,7 @@ export default function PowerAppsScreen() {
               }}
             />
           </>
-        )}
+        ) : null}
       </View>
     </View>
   );
