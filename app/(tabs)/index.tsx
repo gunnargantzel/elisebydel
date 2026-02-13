@@ -8,6 +8,7 @@ import {
   Text,
   Platform,
   BackHandler,
+  Image,
 } from 'react-native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -240,7 +241,7 @@ export default function PowerAppsScreen() {
       
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.logo}>😊</Text>
+          <Image source={require('@/assets/images/elise-icon.png')} style={styles.logo} />
           {userName && <Text style={styles.userText} numberOfLines={1}>{userName}</Text>}
         </View>
         <View style={styles.headerRight}>
@@ -372,7 +373,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   logo: {
-    fontSize: 28,
+    width: 32,
+    height: 32,
+    resizeMode: 'contain',
   },
   userText: {
     color: '#e3eaf3',
