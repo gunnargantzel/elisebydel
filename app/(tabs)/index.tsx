@@ -253,7 +253,7 @@ export default function PowerAppsScreen() {
       
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Image source={require('@/assets/images/elise-logo.png')} style={styles.logo} resizeMode="contain" />
+          <Image source={require('@/assets/images/elise-icon.png')} style={styles.logo} resizeMode="contain" />
           {userName && <Text style={styles.userText} numberOfLines={1}>{userName}</Text>}
         </View>
         <View style={styles.headerRight}>
