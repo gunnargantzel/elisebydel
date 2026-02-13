@@ -253,6 +253,11 @@ export default function PowerAppsScreen() {
       
       <View style={styles.header}>
         <View style={styles.headerLeft}>
+          <Image 
+            source={require('@/assets/images/oslo-logo.png')} 
+            style={styles.logo} 
+            resizeMode="contain"
+          />
           {userName && <Text style={styles.userText} numberOfLines={1}>{userName}</Text>}
         </View>
         <View style={styles.headerRight}>
@@ -377,6 +382,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     flex: 1,
+  },
+  logo: {
+    width: 80,
+    height: 28,
   },
   headerRight: {
     flexDirection: 'row',
