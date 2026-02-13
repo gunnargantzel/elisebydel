@@ -8,6 +8,7 @@ import {
   Text,
   Platform,
   BackHandler,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LogOut } from 'lucide-react-native';
@@ -252,7 +253,7 @@ export default function PowerAppsScreen() {
       
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.logo}>😊</Text>
+          <Image source={require('@/assets/images/elise-logo.png')} style={styles.logo} resizeMode="contain" />
           {userName && <Text style={styles.userText} numberOfLines={1}>{userName}</Text>}
         </View>
         <View style={styles.headerRight}>
@@ -384,7 +385,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   logo: {
-    fontSize: 28,
+    width: 32,
+    height: 32,
   },
   userText: {
     color: '#e3eaf3',
