@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -27,11 +27,6 @@ const getAuthUrl = () => {
   return url.toString();
 };
 
-// Redirect immediately on web before component renders
-if (typeof window !== 'undefined' && Platform.OS === 'web') {
-  window.location.replace(getAuthUrl());
-}
-
 export default function PowerAppsScreen() {
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
@@ -44,6 +39,12 @@ export default function PowerAppsScreen() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutComplete, setLogoutComplete] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.replace(getAuthUrl());
+    }
+  }, []);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
