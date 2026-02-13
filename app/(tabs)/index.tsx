@@ -253,7 +253,6 @@ export default function PowerAppsScreen() {
       
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.logo}>😊</Text>
           {userName && <Text style={styles.userText} numberOfLines={1}>{userName}</Text>}
         </View>
         <View style={styles.headerRight}>
@@ -384,9 +383,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  logo: {
-    fontSize: 28,
-  },
+
   userText: {
     color: '#e3eaf3',
     fontSize: 14,
