@@ -249,7 +249,7 @@ export default function PowerAppsScreen() {
             onPress={handleLogout}
             activeOpacity={0.7}
           >
-            <LogOut size={18} color={Colors.headerText} />
+            <LogOut size={18} color="#2a2859" />
           </TouchableOpacity>
         </View>
       </View>
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
   },
   userText: {
-    color: Colors.headerText,
+    color: '#2a2859',
     fontSize: 14,
     fontWeight: '500' as const,
   },
