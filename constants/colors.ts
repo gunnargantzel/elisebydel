@@ -9,6 +9,6 @@ export default {
   border: '#EDEBE9',
   error: '#D13438',
   success: '#107C10',
-  headerBackground: '#e3eaf3',
+  headerBackground: '#2a2859',
   headerText: '#323130',
 };
