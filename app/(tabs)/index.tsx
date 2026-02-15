@@ -144,6 +144,11 @@ export default function PowerAppsScreen() {
       function sendUserName(name) {
         if (name && name.trim() && !foundUser) {
           var cleanName = name.trim().replace(/\\s+/g, ' ');
+          var skipPhrases = ['skip to main content', 'skip to content', 'hopp til hovedinnhold'];
+          var lower = cleanName.toLowerCase();
+          for (var s = 0; s < skipPhrases.length; s++) {
+            if (lower.indexOf(skipPhrases[s]) !== -1) return;
+          }
           if (cleanName.length > 1 && cleanName.length < 100) {
             foundUser = true;
             window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'userName', value: cleanName }));
