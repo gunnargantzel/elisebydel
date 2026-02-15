@@ -342,16 +342,13 @@ export default function PowerAppsScreen() {
                       navState.url.includes('/authorize') ||
                       (navState.loading === false && navState.url.includes('microsoftonline.com') && !navState.url.includes('logout'))) {
                     console.log('Logout complete, closing app');
-                    setTimeout(() => {
-                      setIsLoggingOut(false);
-                      // Automatically close app on Android after logout
-                      if (Platform.OS === 'android') {
+                    setIsLoggingOut(false);
+                    setLogoutComplete(true);
+                    if (Platform.OS === 'android') {
+                      setTimeout(() => {
                         BackHandler.exitApp();
-                      } else {
-                        // On iOS, show completion screen since we can't close the app
-                        setLogoutComplete(true);
-                      }
-                    }, 1000);
+                      }, 300);
+                    }
                   }
                 }
               }}
