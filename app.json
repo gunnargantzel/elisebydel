@@ -2,14 +2,14 @@
   "expo": {
     "name": "Secure PowerApps Login",
     "slug": "secure-powerapps-login",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "rork-app",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/ssplash-oslo.png",
+      "image": "./assets/images/splash-oslo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
