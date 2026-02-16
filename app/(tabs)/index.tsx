@@ -8,6 +8,7 @@ import {
   Text,
   Platform,
   BackHandler,
+  AppState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LogOut } from 'lucide-react-native';
@@ -55,6 +56,20 @@ export default function PowerAppsScreen() {
       window.location.replace(getAuthUrl());
     }
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && logoutComplete) {
+        console.log('App resumed after logout, resetting state...');
+        setLogoutComplete(false);
+        setIsLoggingOut(false);
+        setUserName(null);
+        setKey(prev => prev + 1);
+      }
+    });
+    return () => subscription.remove();
+  }, [logoutComplete]);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
