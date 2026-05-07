@@ -7,7 +7,7 @@
       "inactivityTimeoutMinutes": 240
     },
     "name": "EliseInstitusjon",
-    "slug": "eliseinstitusjon",
+    "slug": "secure-powerapps-login",
     "version": "1.0.18",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
