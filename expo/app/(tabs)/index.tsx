@@ -9,8 +9,10 @@ import {
   Platform,
   BackHandler,
   AppState,
+  AppStateStatus,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import { LogOut } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 
@@ -27,6 +29,7 @@ if (Platform.OS !== 'web') {
 }
 
 const POWER_APPS_BASE_URL = 'https://apps.powerapps.com/play/e/51da13ed-bad2-4891-acdf-06d3184e6af1/a/f9c26727-72ed-468b-89c2-4e06ee09c3d8?tenantId=fb7e0b12-d8fc-4f14-bd1a-ad9c8667a7e6&hint=052fe12c-09c4-4ebe-8a83-abe82ae742cc&sourcetime=1770037641252&skipMobileRedirect=1&hidenavbar=true';
+const DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 4 * 60;
 
 const getAuthUrl = () => {
   const url = new URL(POWER_APPS_BASE_URL);
@@ -41,6 +44,13 @@ const getAuthUrl = () => {
 export default function PowerAppsScreen() {
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebViewRef | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const wentBackgroundAtRef = useRef<number | null>(null);
+  const configuredTimeoutMinutes = Number(Constants.expoConfig?.extra?.inactivityTimeoutMinutes);
+  const inactivityTimeoutMinutes = Number.isFinite(configuredTimeoutMinutes) && configuredTimeoutMinutes > 0
+    ? configuredTimeoutMinutes
+    : DEFAULT_INACTIVITY_TIMEOUT_MINUTES;
+  const sessionResetAfterMs = inactivityTimeoutMinutes * 60 * 1000;
   
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState(0);
@@ -51,6 +61,60 @@ export default function PowerAppsScreen() {
   const [logoutComplete, setLogoutComplete] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
 
+  const performHardLogout = useCallback((reason: string) => {
+    console.log('Starting hard logout:', reason);
+    setError(null);
+    setLogoutComplete(false);
+    setUserName(null);
+
+    if (webViewRef.current) {
+      webViewRef.current.injectJavaScript(`
+        (function() {
+          try {
+            localStorage.clear();
+            sessionStorage.clear();
+            var cookies = document.cookie.split(";");
+            for (var i = 0; i < cookies.length; i++) {
+              var cookie = cookies[i];
+              var eqPos = cookie.indexOf("=");
+              var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+              document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+              document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.microsoft.com";
+              document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.microsoftonline.com";
+              document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.powerapps.com";
+              document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.live.com";
+            }
+            if (window.indexedDB) {
+              indexedDB.databases().then(function(dbs) {
+                dbs.forEach(function(db) { indexedDB.deleteDatabase(db.name); });
+              }).catch(function() {});
+            }
+            if (window.caches) {
+              caches.keys().then(function(names) {
+                names.forEach(function(name) { caches.delete(name); });
+              }).catch(function() {});
+            }
+          } catch (e) {}
+          true;
+        })();
+      `);
+      webViewRef.current.clearCache?.(true);
+      webViewRef.current.clearHistory?.();
+    }
+
+    setIsLoggingOut(true);
+    setKey(prev => prev + 1);
+  }, []);
+
+  const resetSession = useCallback((reason: string) => {
+    console.log('Resetting WebView session:', reason);
+    setError(null);
+    setIsLoggingOut(false);
+    setLogoutComplete(false);
+    setUserName(null);
+    setKey(prev => prev + 1);
+  }, []);
+
   useEffect(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.location.replace(getAuthUrl());
@@ -58,18 +122,62 @@ export default function PowerAppsScreen() {
   }, []);
 
   useEffect(() => {
+    console.log(`Inactivity auto-logout timeout: ${inactivityTimeoutMinutes} minute(s)`);
+  }, [inactivityTimeoutMinutes]);
+
+  useEffect(() => {
     if (Platform.OS !== 'android') return;
     const subscription = AppState.addEventListener('change', (nextAppState) => {
+      const prevState = appStateRef.current;
+      appStateRef.current = nextAppState;
+
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        wentBackgroundAtRef.current = Date.now();
+        return;
+      }
+
       if (nextAppState === 'active' && logoutComplete) {
-        console.log('App resumed after logout, resetting state...');
-        setLogoutComplete(false);
-        setIsLoggingOut(false);
-        setUserName(null);
-        setKey(prev => prev + 1);
+        resetSession('resume-after-logout');
+        return;
+      }
+
+      if ((prevState === 'background' || prevState === 'inactive') && nextAppState === 'active') {
+        const sleptMs = wentBackgroundAtRef.current ? Date.now() - wentBackgroundAtRef.current : 0;
+        if (sleptMs >= sessionResetAfterMs) {
+          performHardLogout('inactive-timeout');
+          return;
+        }
+
+        // Short inactivity can also leave Power Apps in a stale state.
+        // Ask the page for a health signal and reset when timeout/error text is present.
+        setTimeout(() => {
+          webViewRef.current?.injectJavaScript(`
+            (function() {
+              try {
+                var txt = ((document.body && document.body.innerText) || '').toLowerCase();
+                var bad = [
+                  "this app isn't working",
+                  "denne appen fungerer ikke",
+                  "session expired",
+                  "timed out",
+                  "økt utløpt",
+                  "innlogging kreves"
+                ];
+                var hasBad = bad.some(function(p) { return txt.indexOf(p) !== -1; });
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'resumeHealth',
+                  hasBad: hasBad,
+                  url: location.href
+                }));
+              } catch (e) {}
+              true;
+            })();
+          `);
+        }, 1200);
       }
     });
     return () => subscription.remove();
-  }, [logoutComplete]);
+  }, [logoutComplete, performHardLogout, resetSession, sessionResetAfterMs]);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
@@ -81,64 +189,12 @@ export default function PowerAppsScreen() {
           text: 'Logg ut',
           style: 'destructive',
           onPress: () => {
-            console.log('Starting full logout sequence...');
-            setError(null);
-            setLogoutComplete(false);
-            setUserName(null);
-            
-            // Clear all storage and cookies aggressively
-            if (webViewRef.current) {
-              webViewRef.current.injectJavaScript(`
-                (function() {
-                  try {
-                    // Clear all storage
-                    localStorage.clear();
-                    sessionStorage.clear();
-                    
-                    // Clear all cookies for all domains
-                    var cookies = document.cookie.split(";");
-                    for (var i = 0; i < cookies.length; i++) {
-                      var cookie = cookies[i];
-                      var eqPos = cookie.indexOf("=");
-                      var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-                      document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-                      document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.microsoft.com";
-                      document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.microsoftonline.com";
-                      document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.powerapps.com";
-                      document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.live.com";
-                    }
-                    
-                    // Clear IndexedDB
-                    if (window.indexedDB) {
-                      indexedDB.databases().then(function(dbs) {
-                        dbs.forEach(function(db) { indexedDB.deleteDatabase(db.name); });
-                      }).catch(function() {});
-                    }
-                    
-                    // Clear caches
-                    if (window.caches) {
-                      caches.keys().then(function(names) {
-                        names.forEach(function(name) { caches.delete(name); });
-                      }).catch(function() {});
-                    }
-                  } catch(e) { console.log('Clear error:', e); }
-                })();
-                true;
-              `);
-              
-              // Clear WebView cache
-              webViewRef.current.clearCache?.(true);
-              webViewRef.current.clearHistory?.();
-            }
-            
-            // Start logout process
-            setIsLoggingOut(true);
-            setKey(prev => prev + 1);
+            performHardLogout('manual');
           },
         },
       ]
     );
-  }, []);
+  }, [performHardLogout]);
 
 
 
@@ -154,89 +210,139 @@ export default function PowerAppsScreen() {
 
   const injectedJavaScript = `
     (function() {
-      var foundUser = false;
+      var confirmedUser = false;
+      var reportedSessionIssue = false;
       
-      function sendUserName(name) {
-        if (name && name.trim() && !foundUser) {
-          var cleanName = name.trim().replace(/\\s+/g, ' ');
-          var skipPhrases = ['skip to main content', 'skip to content', 'hopp til hovedinnhold'];
-          var lower = cleanName.toLowerCase();
-          for (var s = 0; s < skipPhrases.length; s++) {
-            if (lower.indexOf(skipPhrases[s]) !== -1) return;
-          }
-          if (cleanName.length > 1 && cleanName.length < 100) {
-            foundUser = true;
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'userName', value: cleanName }));
-          }
+      var badPhrases = [
+        'skip to main content', 'skip to content', 'skip navigation',
+        'hopp til hovedinnhold', 'gå til hovedinnhold', 'gå til innhold',
+        'hopp til innhold', 'main content', 'hovedinnhold',
+        'sign in', 'logg inn', 'log in', 'loading', 'laster',
+        'power apps', 'powerapps', 'undefined', 'null'
+      ];
+
+      function isValidName(str) {
+        if (!str) return false;
+        var clean = str.trim().replace(/\\s+/g, ' ');
+        if (clean.length < 2 || clean.length > 80) return false;
+        var lower = clean.toLowerCase();
+        for (var i = 0; i < badPhrases.length; i++) {
+          if (lower === badPhrases[i] || lower.indexOf(badPhrases[i]) !== -1) return false;
         }
+        if (/^[^a-zA-ZæøåÆØÅéèêëàâäüöïîôùûç]/.test(clean)) return false;
+        if (clean.indexOf('@') !== -1 && !clean.match(/^[^@]+@[^@]+\\.[^@]+$/)) return false;
+        return true;
+      }
+
+      function sendUserName(name) {
+        if (!name) return;
+        var cleanName = name.trim().replace(/\\s+/g, ' ');
+        if (!isValidName(cleanName)) return;
+        confirmedUser = true;
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'userName', value: cleanName }));
       }
       
-      function extractUserInfo() {
+      function extractFromMSAL() {
         try {
-          // PowerApps player header selectors
-          var selectors = [
-            '[data-automation-id="personaName"]',
-            '.ms-Persona-primaryText',
-            '.ms-Persona-details .ms-Persona-primaryText',
-            '#mectrl_currentAccount_primary',
-            '#mectrl_headerPicture',
-            '[data-testid="profile-card-name"]',
-            '.o365cs-me-tile-name',
-            '.mectrl_currentAccount_primary',
-            '[aria-label*="Account manager"]',
-            '.pa-player-header [class*="name"]',
-            '[class*="userProfile"] [class*="name"]',
-            '[class*="UserProfile"] [class*="Name"]',
-            '#O365_MainLink_MePhoto',
-            '.ms-CommandBar [class*="persona"]',
-            '[data-automationid="splitbuttonprimary"]',
-          ];
-          
-          for (var i = 0; i < selectors.length; i++) {
-            var el = document.querySelector(selectors[i]);
-            if (el) {
-              var name = el.textContent || el.getAttribute('aria-label') || el.getAttribute('title');
-              if (name) {
-                sendUserName(name);
-                return;
-              }
-            }
-          }
-          
-          // Try to get from MSAL account info in localStorage/sessionStorage
-          try {
-            var keys = Object.keys(sessionStorage).concat(Object.keys(localStorage));
+          var storages = [sessionStorage, localStorage];
+          for (var s = 0; s < storages.length; s++) {
+            var store = storages[s];
+            var keys = Object.keys(store);
             for (var k = 0; k < keys.length; k++) {
               var key = keys[k];
-              if (key.includes('login.windows.net') || key.includes('msal') || key.includes('account')) {
-                var val = sessionStorage.getItem(key) || localStorage.getItem(key);
-                if (val) {
-                  var parsed = JSON.parse(val);
-                  if (parsed.name) { sendUserName(parsed.name); return; }
-                  if (parsed.username) { sendUserName(parsed.username); return; }
-                  if (parsed.preferred_username) { sendUserName(parsed.preferred_username); return; }
-                }
+              if (key.indexOf('login.windows.net') !== -1 || key.indexOf('msal') !== -1) {
+                try {
+                  var parsed = JSON.parse(store.getItem(key));
+                  if (parsed && parsed.name && isValidName(parsed.name)) {
+                    sendUserName(parsed.name);
+                    return true;
+                  }
+                } catch(e) {}
               }
             }
+          }
+        } catch(e) {}
+        return false;
+      }
+
+      function extractFromDOM() {
+        var selectors = [
+          '#mectrl_currentAccount_primary',
+          '.mectrl_currentAccount_primary',
+          '[data-automation-id="personaName"]',
+          '.ms-Persona-primaryText',
+          '.o365cs-me-tile-name',
+          '[data-testid="profile-card-name"]',
+        ];
+        for (var i = 0; i < selectors.length; i++) {
+          try {
+            var el = document.querySelector(selectors[i]);
+            if (el) {
+              var txt = (el.textContent || '').trim();
+              if (isValidName(txt)) { sendUserName(txt); return true; }
+              var aria = (el.getAttribute('aria-label') || '').trim();
+              if (isValidName(aria)) { sendUserName(aria); return true; }
+              var title = (el.getAttribute('title') || '').trim();
+              if (isValidName(title)) { sendUserName(title); return true; }
+            }
           } catch(e) {}
-          
-        } catch(e) {
-          console.log('Extract user error:', e);
         }
+        return false;
+      }
+
+      function tryExtract() {
+        if (confirmedUser) return;
+        if (extractFromMSAL()) return;
+        extractFromDOM();
+      }
+
+      function reportSessionIssue(reason) {
+        if (reportedSessionIssue) return;
+        reportedSessionIssue = true;
+        try {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'sessionIssue',
+            reason: reason || 'unknown',
+            url: location.href
+          }));
+        } catch (e) {}
+      }
+
+      function checkForSessionErrors() {
+        try {
+          var txt = ((document.body && document.body.innerText) || '').toLowerCase();
+          var phrases = [
+            "this app isn't working",
+            "denne appen fungerer ikke",
+            "session expired",
+            "timed out",
+            "økt utløpt",
+            "innlogging kreves",
+            "an error occurred",
+            "noe gikk galt"
+          ];
+          for (var i = 0; i < phrases.length; i++) {
+            if (txt.indexOf(phrases[i]) !== -1) {
+              reportSessionIssue(phrases[i]);
+              return;
+            }
+          }
+        } catch (e) {}
       }
       
-      // MutationObserver to detect when user info appears
-      var observer = new MutationObserver(function(mutations) {
-        if (!foundUser) extractUserInfo();
+      var observer = new MutationObserver(function() {
+        if (!confirmedUser) tryExtract();
+        checkForSessionErrors();
       });
       observer.observe(document.body, { childList: true, subtree: true });
       
-      // Run periodically
-      setTimeout(extractUserInfo, 1000);
-      setTimeout(extractUserInfo, 3000);
-      setTimeout(extractUserInfo, 6000);
-      setTimeout(extractUserInfo, 10000);
-      setInterval(function() { if (!foundUser) extractUserInfo(); }, 5000);
+      setTimeout(tryExtract, 2000);
+      setTimeout(tryExtract, 5000);
+      setTimeout(tryExtract, 10000);
+      setTimeout(tryExtract, 20000);
+      setInterval(function() { if (!confirmedUser) tryExtract(); }, 8000);
+      setTimeout(checkForSessionErrors, 2500);
+      setInterval(checkForSessionErrors, 4000);
       
       true;
     })();
@@ -294,8 +400,8 @@ export default function PowerAppsScreen() {
         ) : error ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={() => { setError(null); webViewRef.current?.reload(); }}>
-              <Text style={styles.retryButtonText}>Prøv igjen</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={() => resetSession('manual-restart')}>
+              <Text style={styles.retryButtonText}>Start ny sesjon</Text>
             </TouchableOpacity>
           </View>
         ) : WebView ? (
@@ -309,7 +415,13 @@ export default function PowerAppsScreen() {
               style={styles.webView}
               onLoadEnd={handleLoadEnd}
               onError={handleError}
-              onHttpError={handleError}
+              onHttpError={(syntheticEvent: any) => {
+                handleError(syntheticEvent);
+                const status = syntheticEvent?.nativeEvent?.statusCode;
+                if (status === 401 || status === 403 || status === 440) {
+                  performHardLogout(`http-auth-${status}`);
+                }
+              }}
               injectedJavaScript={injectedJavaScript}
               javaScriptEnabled={true}
               domStorageEnabled={true}
@@ -325,12 +437,28 @@ export default function PowerAppsScreen() {
               setSupportMultipleWindows={false}
               allowsBackForwardNavigationGestures={true}
               onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+              onRenderProcessGone={() => {
+                console.log('WebView process was killed, remounting...');
+                resetSession('render-process-gone');
+              }}
               onMessage={(event: { nativeEvent: { data: string } }) => {
                 try {
                   const data = JSON.parse(event.nativeEvent.data);
                   if (data.type === 'userName' && data.value) {
-                    console.log('Received userName:', data.value);
-                    setUserName(data.value);
+                    const name = data.value.trim();
+                    const bad = ['skip', 'hopp', 'hovedinnhold', 'main content', 'innhold', 'sign in', 'logg inn', 'loading', 'laster', 'powerapps', 'undefined', 'null'];
+                    const lower = name.toLowerCase();
+                    const isInvalid = bad.some(b => lower.includes(b));
+                    if (!isInvalid && name.length >= 2 && name.length <= 80) {
+                      console.log('Received userName:', name);
+                      setUserName(name);
+                    } else {
+                      console.log('Rejected invalid userName:', name);
+                    }
+                  } else if (data.type === 'resumeHealth' && data.hasBad) {
+                    performHardLogout('resume-health-failed');
+                  } else if (data.type === 'sessionIssue') {
+                    performHardLogout(`session-issue-${data.reason || 'unknown'}`);
                   }
                 } catch (e) {
                   console.log('Message parse error:', e);
