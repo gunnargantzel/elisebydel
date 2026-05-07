@@ -153,23 +153,29 @@ export default function PowerAppsScreen() {
         setTimeout(() => {
           webViewRef.current?.injectJavaScript(`
             (function() {
-              try {
-                var txt = ((document.body && document.body.innerText) || '').toLowerCase();
-                var bad = [
-                  "this app isn't working",
-                  "denne appen fungerer ikke",
-                  "session expired",
-                  "timed out",
-                  "økt utløpt",
-                  "innlogging kreves"
-                ];
-                var hasBad = bad.some(function(p) { return txt.indexOf(p) !== -1; });
-                window.ReactNativeWebView.postMessage(JSON.stringify({
-                  type: 'resumeHealth',
-                  hasBad: hasBad,
-                  url: location.href
-                }));
-              } catch (e) {}
+              function sampleBad() {
+                try {
+                  var txt = ((document.body && document.body.innerText) || '').toLowerCase();
+                  var bad = [
+                    "this app isn't working",
+                    "denne appen fungerer ikke",
+                    "session expired",
+                    "økt utløpt"
+                  ];
+                  return bad.some(function(p) { return txt.indexOf(p) !== -1; });
+                } catch (e) { return false; }
+              }
+              setTimeout(function() {
+                var first = sampleBad();
+                setTimeout(function() {
+                  var second = sampleBad();
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'resumeHealth',
+                    hasBad: first && second,
+                    url: location.href
+                  }));
+                }, 2200);
+              }, 400);
               true;
             })();
           `);
@@ -308,31 +314,54 @@ export default function PowerAppsScreen() {
         } catch (e) {}
       }
 
+      var sessionErrorPhrase = null;
+      var sessionErrorSince = 0;
+      var SESSION_ERROR_CONFIRM_MS = 2800;
+      var SESSION_ERROR_POLL_MS = 700;
+      var lastSessionErrorObserveCheck = 0;
+
       function checkForSessionErrors() {
         try {
-          var txt = ((document.body && document.body.innerText) || '').toLowerCase();
           var phrases = [
             "this app isn't working",
             "denne appen fungerer ikke",
             "session expired",
-            "timed out",
-            "økt utløpt",
-            "innlogging kreves",
-            "an error occurred",
-            "noe gikk galt"
+            "økt utløpt"
           ];
+          var txt = ((document.body && document.body.innerText) || '').toLowerCase();
+          var matched = null;
           for (var i = 0; i < phrases.length; i++) {
             if (txt.indexOf(phrases[i]) !== -1) {
-              reportSessionIssue(phrases[i]);
-              return;
+              matched = phrases[i];
+              break;
             }
           }
+          var now = Date.now();
+          if (matched) {
+            if (sessionErrorPhrase === matched) {
+              if (now - sessionErrorSince >= SESSION_ERROR_CONFIRM_MS) {
+                reportSessionIssue(matched);
+              }
+            } else {
+              sessionErrorPhrase = matched;
+              sessionErrorSince = now;
+            }
+          } else {
+            sessionErrorPhrase = null;
+          }
         } catch (e) {}
+      }
+
+      function checkForSessionErrorsFromObserver() {
+        var now = Date.now();
+        if (now - lastSessionErrorObserveCheck < SESSION_ERROR_POLL_MS) return;
+        lastSessionErrorObserveCheck = now;
+        checkForSessionErrors();
       }
       
       var observer = new MutationObserver(function() {
         if (!confirmedUser) tryExtract();
-        checkForSessionErrors();
+        checkForSessionErrorsFromObserver();
       });
       observer.observe(document.body, { childList: true, subtree: true });
       
@@ -342,7 +371,7 @@ export default function PowerAppsScreen() {
       setTimeout(tryExtract, 20000);
       setInterval(function() { if (!confirmedUser) tryExtract(); }, 8000);
       setTimeout(checkForSessionErrors, 2500);
-      setInterval(checkForSessionErrors, 4000);
+      setInterval(checkForSessionErrors, SESSION_ERROR_POLL_MS);
       
       true;
     })();
