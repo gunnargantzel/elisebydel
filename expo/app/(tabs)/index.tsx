@@ -46,6 +46,7 @@ export default function PowerAppsScreen() {
   const webViewRef = useRef<WebViewRef | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const wentBackgroundAtRef = useRef<number | null>(null);
+  const lastInteractionAtRef = useRef<number>(Date.now());
   const configuredTimeoutMinutes = Number(Constants.expoConfig?.extra?.inactivityTimeoutMinutes);
   const inactivityTimeoutMinutes = Number.isFinite(configuredTimeoutMinutes) && configuredTimeoutMinutes > 0
     ? configuredTimeoutMinutes
@@ -185,6 +186,18 @@ export default function PowerAppsScreen() {
     return () => subscription.remove();
   }, [logoutComplete, performHardLogout, resetSession, sessionResetAfterMs]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const checkInterval = setInterval(() => {
+      if (appStateRef.current !== 'active' || isLoggingOut || logoutComplete) return;
+      const idleMs = Date.now() - lastInteractionAtRef.current;
+      if (idleMs >= sessionResetAfterMs) {
+        performHardLogout('foreground-idle-timeout');
+      }
+    }, 15000);
+    return () => clearInterval(checkInterval);
+  }, [isLoggingOut, logoutComplete, performHardLogout, sessionResetAfterMs]);
+
   const handleLogout = useCallback(() => {
     Alert.alert(
       'Logg ut',
@@ -314,6 +327,19 @@ export default function PowerAppsScreen() {
         } catch (e) {}
       }
 
+      var lastUserActivitySentAt = 0;
+      function reportUserActivity() {
+        try {
+          var now = Date.now();
+          if (now - lastUserActivitySentAt < 1500) return;
+          lastUserActivitySentAt = now;
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'userActivity',
+            ts: now
+          }));
+        } catch (e) {}
+      }
+
       var sessionErrorPhrase = null;
       var sessionErrorSince = 0;
       var SESSION_ERROR_CONFIRM_MS = 2800;
@@ -364,6 +390,11 @@ export default function PowerAppsScreen() {
         checkForSessionErrorsFromObserver();
       });
       observer.observe(document.body, { childList: true, subtree: true });
+      document.addEventListener('pointerdown', reportUserActivity, { passive: true });
+      document.addEventListener('touchstart', reportUserActivity, { passive: true });
+      document.addEventListener('keydown', reportUserActivity, { passive: true });
+      document.addEventListener('scroll', reportUserActivity, { passive: true });
+      document.addEventListener('click', reportUserActivity, { passive: true });
       
       setTimeout(tryExtract, 2000);
       setTimeout(tryExtract, 5000);
@@ -484,6 +515,8 @@ export default function PowerAppsScreen() {
                     } else {
                       console.log('Rejected invalid userName:', name);
                     }
+                  } else if (data.type === 'userActivity') {
+                    lastInteractionAtRef.current = Date.now();
                   } else if (data.type === 'resumeHealth' && data.hasBad) {
                     performHardLogout('resume-health-failed');
                   } else if (data.type === 'sessionIssue') {
@@ -496,6 +529,7 @@ export default function PowerAppsScreen() {
               originWhitelist={['*']}
               onNavigationStateChange={(navState: { url: string; loading?: boolean }) => {
                 console.log('Navigation:', navState.url);
+                lastInteractionAtRef.current = Date.now();
                 
                 // After logout completes, reload with fresh login prompt
                 if (isLoggingOut) {
