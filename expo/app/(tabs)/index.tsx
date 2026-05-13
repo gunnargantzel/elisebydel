@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
+  KeyboardAvoidingView,
   StyleSheet,
   TouchableOpacity,
   Alert,
@@ -148,6 +149,7 @@ export default function PowerAppsScreen() {
           performHardLogout('inactive-timeout');
           return;
         }
+        if (sleptMs < 30000) return;
 
         // Short inactivity can also leave Power Apps in a stale state.
         // Ask the page for a health signal and reset when timeout/error text is present.
@@ -451,7 +453,10 @@ export default function PowerAppsScreen() {
         </View>
       </View>
 
-      <View style={[styles.webViewContainer, { paddingBottom: insets.bottom }]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'android' ? 'height' : undefined}
+        style={[styles.webViewContainer, { paddingBottom: insets.bottom }]}
+      >
         {Platform.OS === 'web' ? null : logoutComplete ? (
           <View style={styles.logoutCompleteContainer}>
             <Text style={styles.logoutCompleteTitle}>Du er logget ut</Text>
@@ -498,8 +503,8 @@ export default function PowerAppsScreen() {
               allowsBackForwardNavigationGestures={true}
               onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
               onRenderProcessGone={() => {
-                console.log('WebView process was killed, remounting...');
-                resetSession('render-process-gone');
+                console.log('WebView process was killed, waiting for manual restart');
+                setError('Appen mistet forbindelsen. Trykk "Start ny sesjon" for å laste på nytt.');
               }}
               onMessage={(event: { nativeEvent: { data: string } }) => {
                 try {
@@ -561,7 +566,7 @@ export default function PowerAppsScreen() {
             />
           </>
         ) : null}
-      </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }

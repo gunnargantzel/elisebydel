@@ -8,14 +8,14 @@
     },
     "name": "EliseInstitusjon",
     "slug": "secure-powerapps-login",
-    "version": "1.0.18",
+    "version": "1.0.19",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "elise-institusjon",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash-oslo.png",
+      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -24,7 +24,7 @@
       "bundleIdentifier": "app.rork.secure-powerapps-login"
     },
     "android": {
-      "versionCode": 19,
+      "versionCode": 20,
       "permissions": [],
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
