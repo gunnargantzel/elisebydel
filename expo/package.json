@@ -1,7 +1,7 @@
 {
   "name": "expo-app",
   "main": "expo-router/entry",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "scripts": {
     "start": "expo start --tunnel",
     "start-web": "expo start --web --tunnel",

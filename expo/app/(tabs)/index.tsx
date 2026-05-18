@@ -57,8 +57,6 @@ export default function PowerAppsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState(0);
 
-  const [useIncognito] = useState(false);
-
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutComplete, setLogoutComplete] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
@@ -491,7 +489,7 @@ export default function PowerAppsScreen() {
               javaScriptEnabled={true}
               domStorageEnabled={true}
               startInLoadingState={false}
-              incognito={isLoggingOut ? true : useIncognito}
+              incognito={true}
               cacheEnabled={true}
               thirdPartyCookiesEnabled={true}
               sharedCookiesEnabled={true}

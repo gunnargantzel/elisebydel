@@ -8,7 +8,7 @@
     },
     "name": "EliseInstitusjon",
     "slug": "secure-powerapps-login",
-    "version": "1.0.19",
+    "version": "1.0.20",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "elise-institusjon",
@@ -24,7 +24,7 @@
       "bundleIdentifier": "app.rork.secure-powerapps-login"
     },
     "android": {
-      "versionCode": 20,
+      "versionCode": 21,
       "permissions": [],
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
