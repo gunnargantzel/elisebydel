@@ -454,7 +454,7 @@ export default function PowerAppsScreen() {
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'android' ? 'height' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={[styles.webViewContainer, { paddingBottom: insets.bottom }]}
       >
         {Platform.OS === 'web' ? null : logoutComplete ? (
