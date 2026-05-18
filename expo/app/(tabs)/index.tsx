@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   Alert,
   StatusBar,
   Text,
@@ -12,10 +13,19 @@ import {
   AppState,
   AppStateStatus,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { LogOut } from 'lucide-react-native';
 import Colors from '@/constants/colors';
+import {
+  logDebug,
+  logError,
+  logInfo,
+  logWarn,
+  type LogLevel,
+} from '@/lib/appLogger';
+import { redactUrl } from '@/lib/redactUrl';
 
 type WebViewRef = {
   injectJavaScript: (script: string) => void;
@@ -42,12 +52,18 @@ const getAuthUrl = () => {
   return url.toString();
 };
 
+const DIAGNOSTIC_TAP_COUNT = 7;
+const DIAGNOSTIC_TAP_WINDOW_MS = 2000;
+
 export default function PowerAppsScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebViewRef | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const wentBackgroundAtRef = useRef<number | null>(null);
   const lastInteractionAtRef = useRef<number>(Date.now());
+  const diagnosticTapCountRef = useRef(0);
+  const diagnosticTapWindowRef = useRef(0);
   const configuredTimeoutMinutes = Number(Constants.expoConfig?.extra?.inactivityTimeoutMinutes);
   const inactivityTimeoutMinutes = Number.isFinite(configuredTimeoutMinutes) && configuredTimeoutMinutes > 0
     ? configuredTimeoutMinutes
@@ -61,8 +77,22 @@ export default function PowerAppsScreen() {
   const [logoutComplete, setLogoutComplete] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
 
+  const handleDiagnosticHeaderPress = useCallback(() => {
+    const now = Date.now();
+    if (now - diagnosticTapWindowRef.current > DIAGNOSTIC_TAP_WINDOW_MS) {
+      diagnosticTapCountRef.current = 0;
+    }
+    diagnosticTapWindowRef.current = now;
+    diagnosticTapCountRef.current += 1;
+    if (diagnosticTapCountRef.current >= DIAGNOSTIC_TAP_COUNT) {
+      diagnosticTapCountRef.current = 0;
+      logInfo('app', 'Diagnostics opened');
+      router.push('/debug-logs');
+    }
+  }, [router]);
+
   const performHardLogout = useCallback((reason: string) => {
-    console.log('Starting hard logout:', reason);
+    logInfo('session', 'Starting hard logout', { reason });
     setError(null);
     setLogoutComplete(false);
     setUserName(null);
@@ -107,7 +137,7 @@ export default function PowerAppsScreen() {
   }, []);
 
   const resetSession = useCallback((reason: string) => {
-    console.log('Resetting WebView session:', reason);
+    logInfo('session', 'Resetting WebView session', { reason });
     setError(null);
     setIsLoggingOut(false);
     setLogoutComplete(false);
@@ -122,7 +152,10 @@ export default function PowerAppsScreen() {
   }, []);
 
   useEffect(() => {
-    console.log(`Inactivity auto-logout timeout: ${inactivityTimeoutMinutes} minute(s)`);
+    logInfo('app', 'PowerApps screen mounted', {
+      inactivityTimeoutMinutes,
+      platform: Platform.OS,
+    });
   }, [inactivityTimeoutMinutes]);
 
   useEffect(() => {
@@ -133,16 +166,20 @@ export default function PowerAppsScreen() {
 
       if (nextAppState === 'background' || nextAppState === 'inactive') {
         wentBackgroundAtRef.current = Date.now();
+        logInfo('appState', 'App went to background', { state: nextAppState });
         return;
       }
 
       if (nextAppState === 'active' && logoutComplete) {
+        logInfo('appState', 'Resume after logout complete');
         resetSession('resume-after-logout');
         return;
       }
 
       if ((prevState === 'background' || prevState === 'inactive') && nextAppState === 'active') {
         const sleptMs = wentBackgroundAtRef.current ? Date.now() - wentBackgroundAtRef.current : 0;
+        const idleMs = Date.now() - lastInteractionAtRef.current;
+        logInfo('appState', 'App returned to foreground', { sleptMs, idleMs, prevState });
         if (sleptMs >= sessionResetAfterMs) {
           performHardLogout('inactive-timeout');
           return;
@@ -192,6 +229,7 @@ export default function PowerAppsScreen() {
       if (appStateRef.current !== 'active' || isLoggingOut || logoutComplete) return;
       const idleMs = Date.now() - lastInteractionAtRef.current;
       if (idleMs >= sessionResetAfterMs) {
+        logWarn('session', 'Foreground idle timeout', { idleMs });
         performHardLogout('foreground-idle-timeout');
       }
     }, 15000);
@@ -217,20 +255,52 @@ export default function PowerAppsScreen() {
 
 
 
+  const handleLoadStart = useCallback(() => {
+    logInfo('webview', 'WebView load started');
+  }, []);
+
   const handleLoadEnd = useCallback(() => {
-    console.log('WebView loaded successfully');
+    logInfo('webview', 'WebView load ended');
   }, []);
 
   const handleError = useCallback((syntheticEvent: any) => {
     const { nativeEvent } = syntheticEvent;
-    console.error('WebView error:', nativeEvent);
+    logError('webview', 'WebView error', {
+      description: nativeEvent?.description,
+      code: nativeEvent?.code,
+      url: nativeEvent?.url ? redactUrl(nativeEvent.url) : undefined,
+    });
     setError('Kunne ikke laste appen. Sjekk internettforbindelsen din.');
+  }, []);
+
+  const handleWebViewLog = useCallback((level: string, message: string, data?: unknown) => {
+    const normalized = (level || 'info') as LogLevel;
+    if (normalized === 'error') {
+      logError('webview', message, data);
+    } else if (normalized === 'warn') {
+      logWarn('webview', message, data);
+    } else if (normalized === 'debug') {
+      logDebug('webview', message, data);
+    } else {
+      logInfo('webview', message, data);
+    }
   }, []);
 
   const injectedJavaScript = `
     (function() {
       var confirmedUser = false;
       var reportedSessionIssue = false;
+
+      function wvLog(level, message, data) {
+        try {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'webviewLog',
+            level: level || 'info',
+            message: message || '',
+            data: data
+          }));
+        } catch (e) {}
+      }
       
       var badPhrases = [
         'skip to main content', 'skip to content', 'skip navigation',
@@ -258,6 +328,7 @@ export default function PowerAppsScreen() {
         var cleanName = name.trim().replace(/\\s+/g, ' ');
         if (!isValidName(cleanName)) return;
         confirmedUser = true;
+        wvLog('info', 'User name confirmed');
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'userName', value: cleanName }));
       }
       
@@ -318,6 +389,7 @@ export default function PowerAppsScreen() {
       function reportSessionIssue(reason) {
         if (reportedSessionIssue) return;
         reportedSessionIssue = true;
+        wvLog('error', 'Session issue confirmed', { reason: reason || 'unknown' });
         try {
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'sessionIssue',
@@ -371,6 +443,7 @@ export default function PowerAppsScreen() {
             } else {
               sessionErrorPhrase = matched;
               sessionErrorSince = now;
+              wvLog('warn', 'Session error phrase detected', { phrase: matched });
             }
           } else {
             sessionErrorPhrase = null;
@@ -403,6 +476,9 @@ export default function PowerAppsScreen() {
       setInterval(function() { if (!confirmedUser) tryExtract(); }, 8000);
       setTimeout(checkForSessionErrors, 2500);
       setInterval(checkForSessionErrors, SESSION_ERROR_POLL_MS);
+      setInterval(function() {
+        wvLog('debug', 'WebView heartbeat', { path: location.pathname });
+      }, 60000);
       
       true;
     })();
@@ -410,7 +486,7 @@ export default function PowerAppsScreen() {
 
   const handleShouldStartLoadWithRequest = useCallback((request: { url: string }) => {
     const url = request.url;
-    console.log('Navigation request:', url);
+    logDebug('nav', 'Navigation request', { url: redactUrl(url) });
     
     // Allow Microsoft auth URLs
     if (
@@ -437,9 +513,9 @@ export default function PowerAppsScreen() {
       <StatusBar barStyle="light-content" backgroundColor={Colors.headerBackground} />
       
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
+        <Pressable style={styles.headerLeft} onPress={handleDiagnosticHeaderPress}>
           {userName && <Text style={styles.userText} numberOfLines={1}>{userName}</Text>}
-        </View>
+        </Pressable>
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={styles.logoutButton}
@@ -476,11 +552,17 @@ export default function PowerAppsScreen() {
                 ? 'https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri=' + encodeURIComponent('https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=00000000-0000-0000-0000-000000000000&response_type=code&prompt=select_account')
                 : getAuthUrl() }}
               style={styles.webView}
+              onLoadStart={handleLoadStart}
               onLoadEnd={handleLoadEnd}
               onError={handleError}
               onHttpError={(syntheticEvent: any) => {
-                handleError(syntheticEvent);
                 const status = syntheticEvent?.nativeEvent?.statusCode;
+                const url = syntheticEvent?.nativeEvent?.url;
+                logError('webview', 'WebView HTTP error', {
+                  status,
+                  url: url ? redactUrl(url) : undefined,
+                });
+                handleError(syntheticEvent);
                 if (status === 401 || status === 403 || status === 440) {
                   performHardLogout(`http-auth-${status}`);
                 }
@@ -501,37 +583,49 @@ export default function PowerAppsScreen() {
               allowsBackForwardNavigationGestures={true}
               onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
               onRenderProcessGone={() => {
-                console.log('WebView process was killed, waiting for manual restart');
+                logError('webview', 'WebView render process gone');
                 setError('Appen mistet forbindelsen. Trykk "Start ny sesjon" for å laste på nytt.');
               }}
               onMessage={(event: { nativeEvent: { data: string } }) => {
                 try {
                   const data = JSON.parse(event.nativeEvent.data);
-                  if (data.type === 'userName' && data.value) {
+                  if (data.type === 'webviewLog') {
+                    handleWebViewLog(data.level, data.message, data.data);
+                  } else if (data.type === 'userName' && data.value) {
                     const name = data.value.trim();
                     const bad = ['skip', 'hopp', 'hovedinnhold', 'main content', 'innhold', 'sign in', 'logg inn', 'loading', 'laster', 'powerapps', 'undefined', 'null'];
                     const lower = name.toLowerCase();
                     const isInvalid = bad.some(b => lower.includes(b));
                     if (!isInvalid && name.length >= 2 && name.length <= 80) {
-                      console.log('Received userName:', name);
+                      logInfo('session', 'Received userName', { name });
                       setUserName(name);
                     } else {
-                      console.log('Rejected invalid userName:', name);
+                      logDebug('session', 'Rejected invalid userName', { name });
                     }
                   } else if (data.type === 'userActivity') {
                     lastInteractionAtRef.current = Date.now();
-                  } else if (data.type === 'resumeHealth' && data.hasBad) {
-                    performHardLogout('resume-health-failed');
+                  } else if (data.type === 'resumeHealth') {
+                    logWarn('session', 'Resume health check', {
+                      hasBad: data.hasBad,
+                      url: data.url ? redactUrl(data.url) : undefined,
+                    });
+                    if (data.hasBad) {
+                      performHardLogout('resume-health-failed');
+                    }
                   } else if (data.type === 'sessionIssue') {
+                    logError('session', 'Session issue from WebView', { reason: data.reason });
                     performHardLogout(`session-issue-${data.reason || 'unknown'}`);
                   }
                 } catch (e) {
-                  console.log('Message parse error:', e);
+                  logWarn('webview', 'Message parse error', { error: String(e) });
                 }
               }}
               originWhitelist={['*']}
               onNavigationStateChange={(navState: { url: string; loading?: boolean }) => {
-                console.log('Navigation:', navState.url);
+                logDebug('nav', 'Navigation state change', {
+                  url: redactUrl(navState.url),
+                  loading: navState.loading,
+                });
                 lastInteractionAtRef.current = Date.now();
                 
                 // After logout completes, reload with fresh login prompt
@@ -541,7 +635,7 @@ export default function PowerAppsScreen() {
                       navState.url.includes('loggedout') || 
                       navState.url.includes('login.microsoftonline.com') ||
                       navState.url.includes('login.live.com')) {
-                    console.log('Logout in progress...');
+                    logInfo('session', 'Logout in progress');
                   }
                   
                   // If logout session completed or redirected to login page
@@ -550,7 +644,7 @@ export default function PowerAppsScreen() {
                       navState.url.includes('select_account') ||
                       navState.url.includes('/authorize') ||
                       (navState.loading === false && navState.url.includes('microsoftonline.com') && !navState.url.includes('logout'))) {
-                    console.log('Logout complete, closing app');
+                    logInfo('session', 'Logout complete, closing app');
                     setIsLoggingOut(false);
                     setLogoutComplete(true);
                     if (Platform.OS === 'android') {
