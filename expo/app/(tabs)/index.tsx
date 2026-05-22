@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Pressable,
   Alert,
+  ActivityIndicator,
   StatusBar,
   Text,
   Platform,
@@ -26,6 +27,10 @@ import {
   type LogLevel,
 } from '@/lib/appLogger';
 import { redactUrl } from '@/lib/redactUrl';
+import {
+  logMemorySnapshot,
+  recordRenderProcessGone,
+} from '@/lib/memoryDiagnostics';
 
 type WebViewRef = {
   injectJavaScript: (script: string) => void;
@@ -54,6 +59,7 @@ const getAuthUrl = () => {
 
 const DIAGNOSTIC_TAP_COUNT = 7;
 const DIAGNOSTIC_TAP_WINDOW_MS = 2000;
+const RENDER_PROCESS_GONE_RECOVERY_DELAY_MS = 500;
 
 export default function PowerAppsScreen() {
   const router = useRouter();
@@ -64,6 +70,7 @@ export default function PowerAppsScreen() {
   const lastInteractionAtRef = useRef<number>(Date.now());
   const diagnosticTapCountRef = useRef(0);
   const diagnosticTapWindowRef = useRef(0);
+  const renderProcessGoneRecoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const configuredTimeoutMinutes = Number(Constants.expoConfig?.extra?.inactivityTimeoutMinutes);
   const inactivityTimeoutMinutes = Number.isFinite(configuredTimeoutMinutes) && configuredTimeoutMinutes > 0
     ? configuredTimeoutMinutes
@@ -71,6 +78,7 @@ export default function PowerAppsScreen() {
   const sessionResetAfterMs = inactivityTimeoutMinutes * 60 * 1000;
   
   const [error, setError] = useState<string | null>(null);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [key, setKey] = useState(0);
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -138,12 +146,46 @@ export default function PowerAppsScreen() {
 
   const resetSession = useCallback((reason: string) => {
     logInfo('session', 'Resetting WebView session', { reason });
+    if (reason.includes('render-process-gone')) {
+      logMemorySnapshot('Recovery after render process gone', { reason });
+    }
     setError(null);
+    setIsRecovering(false);
     setIsLoggingOut(false);
     setLogoutComplete(false);
     setUserName(null);
     setKey(prev => prev + 1);
   }, []);
+
+  const handleRenderProcessGone = useCallback(
+    (event?: { nativeEvent?: { didCrash?: boolean } }) => {
+      const didCrash = event?.nativeEvent?.didCrash;
+      const { shouldAutoRecover, count, autoRestartsInWindow } =
+        recordRenderProcessGone(didCrash);
+
+      if (!shouldAutoRecover) {
+        logError('webview', 'Render process gone rate limit exceeded', {
+          count,
+          autoRestartsInWindow,
+        });
+        setIsRecovering(false);
+        setError(
+          'Appen mistet forbindelsen. Trykk "Start ny sesjon" for å laste på nytt.',
+        );
+        return;
+      }
+
+      setIsRecovering(true);
+      if (renderProcessGoneRecoveryTimeoutRef.current) {
+        clearTimeout(renderProcessGoneRecoveryTimeoutRef.current);
+      }
+      renderProcessGoneRecoveryTimeoutRef.current = setTimeout(() => {
+        renderProcessGoneRecoveryTimeoutRef.current = null;
+        resetSession('render-process-gone-auto');
+      }, RENDER_PROCESS_GONE_RECOVERY_DELAY_MS);
+    },
+    [resetSession],
+  );
 
   useEffect(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -156,6 +198,11 @@ export default function PowerAppsScreen() {
       inactivityTimeoutMinutes,
       platform: Platform.OS,
     });
+    return () => {
+      if (renderProcessGoneRecoveryTimeoutRef.current) {
+        clearTimeout(renderProcessGoneRecoveryTimeoutRef.current);
+      }
+    };
   }, [inactivityTimeoutMinutes]);
 
   useEffect(() => {
@@ -167,6 +214,7 @@ export default function PowerAppsScreen() {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
         wentBackgroundAtRef.current = Date.now();
         logInfo('appState', 'App went to background', { state: nextAppState });
+        logMemorySnapshot('App backgrounded', { state: nextAppState });
         return;
       }
 
@@ -180,6 +228,9 @@ export default function PowerAppsScreen() {
         const sleptMs = wentBackgroundAtRef.current ? Date.now() - wentBackgroundAtRef.current : 0;
         const idleMs = Date.now() - lastInteractionAtRef.current;
         logInfo('appState', 'App returned to foreground', { sleptMs, idleMs, prevState });
+        if (sleptMs >= 60000) {
+          logMemorySnapshot('Long background resume', { sleptMs, idleMs, prevState });
+        }
         if (sleptMs >= sessionResetAfterMs) {
           performHardLogout('inactive-timeout');
           return;
@@ -478,7 +529,7 @@ export default function PowerAppsScreen() {
       setInterval(checkForSessionErrors, SESSION_ERROR_POLL_MS);
       setInterval(function() {
         wvLog('debug', 'WebView heartbeat', { path: location.pathname });
-      }, 60000);
+      }, 120000);
       
       true;
     })();
@@ -536,6 +587,11 @@ export default function PowerAppsScreen() {
             <Text style={styles.logoutCompleteTitle}>Du er logget ut</Text>
             <Text style={styles.logoutCompleteText}>Utloggingen er fullført. Du kan nå lukke appen.</Text>
           </View>
+        ) : isRecovering ? (
+          <View style={styles.recoveringContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.recoveringText}>Laster på nytt…</Text>
+          </View>
         ) : error ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
@@ -572,20 +628,16 @@ export default function PowerAppsScreen() {
               domStorageEnabled={true}
               startInLoadingState={false}
               incognito={true}
-              cacheEnabled={true}
+              cacheEnabled={false}
               thirdPartyCookiesEnabled={true}
               sharedCookiesEnabled={true}
               mixedContentMode="always"
               allowsInlineMediaPlayback={true}
               mediaPlaybackRequiresUserAction={false}
-              userAgent={Platform.OS === 'android' ? 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36' : undefined}
               setSupportMultipleWindows={false}
-              allowsBackForwardNavigationGestures={true}
+              allowsBackForwardNavigationGestures={false}
               onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
-              onRenderProcessGone={() => {
-                logError('webview', 'WebView render process gone');
-                setError('Appen mistet forbindelsen. Trykk "Start ny sesjon" for å laste på nytt.');
-              }}
+              onRenderProcessGone={handleRenderProcessGone}
               onMessage={(event: { nativeEvent: { data: string } }) => {
                 try {
                   const data = JSON.parse(event.nativeEvent.data);
@@ -707,6 +759,18 @@ const styles = StyleSheet.create({
   webView: {
     flex: 1,
     backgroundColor: Colors.surface,
+  },
+  recoveringContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    backgroundColor: Colors.background,
+    gap: 16,
+  },
+  recoveringText: {
+    fontSize: 16,
+    color: Colors.textSecondary,
   },
 
   errorContainer: {
