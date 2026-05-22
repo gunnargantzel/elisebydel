@@ -44,15 +44,42 @@ if (Platform.OS !== 'web') {
   WebView = require('react-native-webview').WebView;
 }
 
-const POWER_APPS_BASE_URL = 'https://apps.powerapps.com/play/e/51da13ed-bad2-4891-acdf-06d3184e6af1/a/f9c26727-72ed-468b-89c2-4e06ee09c3d8?tenantId=fb7e0b12-d8fc-4f14-bd1a-ad9c8667a7e6&hint=052fe12c-09c4-4ebe-8a83-abe82ae742cc&sourcetime=1770037641252&skipMobileRedirect=1&hidenavbar=true';
+const DEFAULT_POWER_APPS_PLAY = {
+  environmentId: '51da13ed-bad2-4891-acdf-06d3184e6af1',
+  appId: 'f9c26727-72ed-468b-89c2-4e06ee09c3d8',
+  tenantId: 'fb7e0b12-d8fc-4f14-bd1a-ad9c8667a7e6',
+  hint: '052fe12c-09c4-4ebe-8a83-abe82ae742cc',
+};
 const DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 4 * 60;
 
+const getPowerAppsPlayConfig = () => {
+  const extra = Constants.expoConfig?.extra as {
+    powerAppsEnvironmentId?: string;
+    powerAppsAppId?: string;
+    powerAppsTenantId?: string;
+    powerAppsHint?: string;
+  } | undefined;
+
+  return {
+    environmentId: extra?.powerAppsEnvironmentId ?? DEFAULT_POWER_APPS_PLAY.environmentId,
+    appId: extra?.powerAppsAppId ?? DEFAULT_POWER_APPS_PLAY.appId,
+    tenantId: extra?.powerAppsTenantId ?? DEFAULT_POWER_APPS_PLAY.tenantId,
+    hint: extra?.powerAppsHint ?? DEFAULT_POWER_APPS_PLAY.hint,
+  };
+};
+
 const getAuthUrl = () => {
-  const url = new URL(POWER_APPS_BASE_URL);
+  const { environmentId, appId, tenantId, hint } = getPowerAppsPlayConfig();
+  const url = new URL(`https://apps.powerapps.com/play/e/${environmentId}/a/${appId}`);
+  url.searchParams.set('tenantId', tenantId);
+  if (hint) {
+    url.searchParams.set('hint', hint);
+  }
+  url.searchParams.set('skipMobileRedirect', '1');
+  url.searchParams.set('hidenavbar', 'true');
   url.searchParams.set('prompt', 'login');
   url.searchParams.set('login_hint', '');
   url.searchParams.set('hideNavBar', 'true');
-  url.searchParams.set('skipMobileRedirect', '1');
   url.searchParams.set('source', 'iframe');
   return url.toString();
 };
@@ -197,6 +224,7 @@ export default function PowerAppsScreen() {
     logInfo('app', 'PowerApps screen mounted', {
       inactivityTimeoutMinutes,
       platform: Platform.OS,
+      ...getPowerAppsPlayConfig(),
     });
     return () => {
       if (renderProcessGoneRecoveryTimeoutRef.current) {
