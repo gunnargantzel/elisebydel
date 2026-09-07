@@ -1,21 +1,22 @@
 {
   "expo": {
     "extra": {
-      "eas": {
-        "projectId": "0cd4db7f-7843-42ad-9c58-1c88cf56e73f"
-      },
       "inactivityTimeoutMinutes": 240,
       "powerAppsEnvironmentId": "51da13ed-bad2-4891-acdf-06d3184e6af1",
       "powerAppsAppId": "fa39fb9c-b2c9-4a91-9233-f404e67cb7c0",
       "powerAppsTenantId": "fb7e0b12-d8fc-4f14-bd1a-ad9c8667a7e6",
-      "powerAppsHint": "052fe12c-09c4-4ebe-8a83-abe82ae742cc"
+      "powerAppsHint": "052fe12c-09c4-4ebe-8a83-abe82ae742cc",
+      "router": {},
+      "eas": {
+        "projectId": "66a7cd45-ec22-4752-aef6-bc118e8caabe"
+      }
     },
-    "name": "EliseInstitusjon",
-    "slug": "secure-powerapps-login",
-    "version": "1.0.24",
+    "name": "EliseBydel",
+    "slug": "elisebydel",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "elise-institusjon",
+    "scheme": "elise-bydel",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -25,10 +26,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.rork.secure-powerapps-login"
+      "bundleIdentifier": "app.rork.elise-bydel"
     },
     "android": {
-      "versionCode": 25,
+      "versionCode": 1,
       "permissions": [],
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
@@ -53,7 +54,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.secure_powerapps_login"
+      "package": "app.rork.elise_bydel"
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -66,6 +67,7 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "owner": "gantzel"
   }
 }
