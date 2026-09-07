@@ -6,13 +6,13 @@
       },
       "inactivityTimeoutMinutes": 240,
       "powerAppsEnvironmentId": "51da13ed-bad2-4891-acdf-06d3184e6af1",
-      "powerAppsAppId": "bc9d39e7-ebf6-4a61-b3a4-1298159710e1",
+      "powerAppsAppId": "f9c26727-72ed-468b-89c2-4e06ee09c3d8",
       "powerAppsTenantId": "fb7e0b12-d8fc-4f14-bd1a-ad9c8667a7e6",
       "powerAppsHint": "052fe12c-09c4-4ebe-8a83-abe82ae742cc"
     },
     "name": "EliseInstitusjon",
     "slug": "secure-powerapps-login",
-    "version": "1.0.23",
+    "version": "1.0.24",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "elise-institusjon",
@@ -28,7 +28,7 @@
       "bundleIdentifier": "app.rork.secure-powerapps-login"
     },
     "android": {
-      "versionCode": 24,
+      "versionCode": 25,
       "permissions": [],
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
